@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "81232047508",
+    "firebase_url": "https://ripple-chat.firebaseio.com",
+    "project_id": "ripple-chat",
+    "storage_bucket": "ripple-chat.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:81232047508:android:b5a0cdbdf22c75a25b3381",
+        "android_client_info": {
+          "package_name": "com.simrin.chatapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "81232047508-l7v2nhogt03rtj5aq997fngeu1j6tbhi.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.simrin.chatapp",
+            "certificate_hash": "d4009860d3451f0e04d3f8896b4d1f2c787b83fa"
+          }
+        },
+        {
+          "client_id": "81232047508-684tp9017rsqeekc1jncu6ahirgq1174.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBmlZ07f3MZTfC06RfxysDo50vkSXSfCrA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "81232047508-684tp9017rsqeekc1jncu6ahirgq1174.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

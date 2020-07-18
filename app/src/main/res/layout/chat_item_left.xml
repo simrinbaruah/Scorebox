@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="8dp">
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@android:color/darker_gray"
+        android:text="dd-MM-yyyy"
+        android:id="@+id/date"
+        android:padding="8dp"
+        android:layout_centerHorizontal="true"/>
+    <RelativeLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/date"
+        android:id="@+id/total_layout">
+        <RelativeLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:id="@+id/message">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="5dp"
+                android:text="hello"
+                android:maxWidth="300dp"
+                android:textColor="@android:color/black"
+                android:padding="8dp"
+                android:id="@+id/show_message"
+                android:textSize="18sp"
+                android:background="@drawable/background_left"/>
+
+            <ImageView
+                android:layout_width="150dp"
+                android:layout_height="150dp"
+                android:layout_below="@id/show_message"
+                android:id="@+id/image_message"
+                android:src="@mipmap/ic_launcher"
+                android:scaleType="centerCrop"/>
+        </RelativeLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@android:color/darker_gray"
+            android:layout_toEndOf="@id/message"
+            android:text="00:00"
+            android:id="@+id/sent_time"
+            android:layout_centerInParent="true"
+            android:padding="4sp"/>
+    </RelativeLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:id="@+id/txt_seen"
+        android:layout_below="@id/total_layout"
+        android:visibility="gone"/>
+
+</RelativeLayout>
