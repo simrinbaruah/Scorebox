@@ -3,10 +3,13 @@ package com.simrin.scorebox.Adapter;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.media.MediaPlayer;
 import android.text.format.DateUtils;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
 
@@ -18,6 +21,8 @@ import com.simrin.scorebox.ImageViewActivity;
 import com.simrin.scorebox.Model.Chat;
 import com.simrin.scorebox.R;
 
+import java.io.File;
+import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -34,6 +39,8 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
     private Context mContext;
     private List<Chat> mChats;
     private String imageURL;
+    private MediaPlayer player;
+    private boolean complete = false;
 
     FirebaseUser fuser;
 
@@ -56,16 +63,13 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
     }
 
     @Override
-    public void onBindViewHolder(@NonNull MessageAdapter.ViewHolder holder, int position) {
+    public void onBindViewHolder(@NonNull final MessageAdapter.ViewHolder holder, int position) {
         final Chat chat=mChats.get(position);
         holder.sent_time.setText(chat.getTimestamp().split(" ")[1]);
         String message_type = chat.getType();
-        if(message_type.equals("text")){
-            holder.show_message.setVisibility(View.VISIBLE);
-            holder.show_message.setText(chat.getMessage());
-            holder.image_message.setVisibility(View.GONE);
-        }else{
+        if(message_type.equals("image")) {
             holder.show_message.setVisibility(View.GONE);
+            holder.play_audio.setVisibility(View.GONE);
             holder.image_message.setVisibility(View.VISIBLE);
             if (isValidContextForGlide(mContext)) {
                 Glide.with(mContext).load(chat.getMessage()).apply(new RequestOptions()
@@ -80,8 +84,38 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
                     mContext.startActivity(new Intent(mContext, ImageViewActivity.class).putExtra("URL", chat.getMessage()));
                 }
             });
-
+        }else if(message_type.equals("audio")){
+            holder.show_message.setVisibility(View.GONE);
+            holder.image_message.setVisibility(View.GONE);
+            holder.play_audio.setVisibility(View.VISIBLE);
+            holder.play_audio.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    if(holder.play_audio.getText().equals("Play Audio")){
+                        holder.play_audio.setText("Stop Audio");
+                        startPlaying(chat.getMessage());
+                        player.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                            @Override
+                            public void onCompletion(MediaPlayer mediaPlayer) {
+                                holder.play_audio.setText("Play Audio");
+                            }
+                        });
+                    }else if(holder.play_audio.getText().equals("Stop Audio")){
+                        holder.play_audio.setText("Play Audio");
+                        stopPlaying();
+                    }
+                }
+            });
+            if(player==null){
+                holder.play_audio.setText("Play Audio");
+            }
+        }else{
+            holder.show_message.setVisibility(View.VISIBLE);
+            holder.show_message.setText(chat.getMessage());
+            holder.image_message.setVisibility(View.GONE);
+            holder.play_audio.setVisibility(View.GONE);
         }
+
         if(position == mChats.size() - 1){
             if(chat.isIsseen()){
                 holder.txt_seen.setText("Seen");
@@ -145,12 +179,14 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
         public ImageView image_message;
         public TextView txt_seen;
         public TextView date;
+        public Button play_audio;
 
         public ViewHolder(View itemView){
             super(itemView);
 
             show_message = itemView.findViewById(R.id.show_message);
             image_message = itemView.findViewById(R.id.image_message);
+            play_audio = itemView.findViewById(R.id.play_audio);
             txt_seen = itemView.findViewById(R.id.txt_seen);
             sent_time = itemView.findViewById(R.id.sent_time);
             date = itemView.findViewById(R.id.date);
@@ -178,5 +214,22 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
             }
         }
         return true;
+    }
+
+    private void startPlaying(String fileName) {
+        player = new MediaPlayer();
+        try {
+            player.setDataSource(fileName);
+            player.prepare();
+            player.start();
+        } catch (IOException e) {
+            Log.e("AUDIO PLAYING", "prepare() failed");
+        }
+    }
+
+
+    private void stopPlaying() {
+        player.release();
+        player = null;
     }
 }

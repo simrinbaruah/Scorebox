@@ -4,6 +4,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.app.ActivityCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.SimpleItemAnimator;
@@ -14,13 +15,19 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
+import android.Manifest;
 import android.app.ProgressDialog;
 import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.media.MediaRecorder;
 import android.net.Uri;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.View;
 import android.webkit.MimeTypeMap;
 import android.widget.EditText;
@@ -33,6 +40,7 @@ import com.bumptech.glide.Glide;
 import com.google.android.gms.tasks.Continuation;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
@@ -58,6 +66,8 @@ import com.simrin.scorebox.Notifications.MyResponse;
 import com.simrin.scorebox.Notifications.Sender;
 import com.simrin.scorebox.Notifications.Token;
 
+import java.io.File;
+import java.io.IOException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -75,7 +85,7 @@ public class MessageActivity extends AppCompatActivity {
     FirebaseUser fuser;
     DatabaseReference databaseReference;
 
-    ImageButton btn_send, btn_attach;
+    ImageButton btn_send, btn_attach, btn_voice;
     EditText text_send;
    ProgressBar progressBar;
 
@@ -97,6 +107,16 @@ public class MessageActivity extends AppCompatActivity {
     private static final int IMAGE_REQUEST = 1;
     private StorageTask uploadTask;
     StorageReference storageReference;
+
+    private static final String LOG_TAG = "AudioRecordTest";
+    private static final int REQUEST_RECORD_AUDIO_PERMISSION = 200;
+    private static String fileName = null;
+    // Requesting permission to RECORD_AUDIO
+    private boolean permissionToRecordAccepted = false;
+    private String [] permissions = {Manifest.permission.RECORD_AUDIO};
+    private MediaRecorder recorder;
+
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -128,12 +148,14 @@ public class MessageActivity extends AppCompatActivity {
         status = findViewById(R.id.status);
         username = findViewById(R.id.username);
         btn_send = findViewById(R.id.btn_send);
+        btn_send.setVisibility(View.GONE);
         text_send = findViewById(R.id.text_send);
         btn_attach = findViewById(R.id.btn_attach);
+        btn_voice = findViewById(R.id.btn_voice);
         progressBar = findViewById(R.id.progressBar);
         progressBar.setVisibility(View.GONE);
 
-        storageReference = FirebaseStorage.getInstance().getReference("message_images");
+        storageReference = FirebaseStorage.getInstance().getReference("messages");
 
          intent = getIntent();
          userid = intent.getStringExtra("userid");
@@ -146,18 +168,55 @@ public class MessageActivity extends AppCompatActivity {
              }
          });
 
-         btn_send.setOnClickListener(new View.OnClickListener() {
-             @Override
-             public void onClick(View view) {
-                 notify = true;
-                 String msg = text_send.getText().toString();
-                 if(!("".equals(msg.trim()))){
-                     String type = "text";
-                     sendMessage(fuser.getUid(), userid, msg, type);
-                 }
-                 text_send.setText("");
-             }
-         });
+        text_send.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
+                final String msg = text_send.getText().toString();
+                if(!("".equals(msg.trim()))){
+                    btn_voice.setVisibility(View.GONE);
+                    btn_send.setVisibility(View.VISIBLE);
+                    btn_send.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View view) {
+                            notify = true;
+                            String type = "text";
+                            sendMessage(fuser.getUid(), userid, msg, type);
+                            text_send.setText("");
+                        }
+                    });
+                }else{
+                    btn_voice.setVisibility(View.VISIBLE);
+                    btn_send.setVisibility(View.GONE);
+                }
+            }
+
+            @Override
+            public void afterTextChanged(Editable editable) {
+            }
+        });
+
+        fileName = getExternalCacheDir().getAbsolutePath();
+        fileName += "/"+System.currentTimeMillis()+".3gp";
+        ActivityCompat.requestPermissions(this, permissions, REQUEST_RECORD_AUDIO_PERMISSION);
+
+        btn_voice.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View view, MotionEvent motionEvent) {
+                if(motionEvent.getAction() == MotionEvent.ACTION_DOWN){
+                    startRecording();
+                    text_send.setText("Recording now...");
+                }else if(motionEvent.getAction() == MotionEvent.ACTION_UP){
+                    stopRecording();
+                    text_send.setText("");
+                }
+                return false;
+            }
+        });
+
 
          databaseReference = FirebaseDatabase.getInstance().getReference("Users").child(userid);
 
@@ -186,6 +245,17 @@ public class MessageActivity extends AppCompatActivity {
          });
 
          seenMessage(userid);
+    }
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        switch (requestCode){
+            case REQUEST_RECORD_AUDIO_PERMISSION:
+                permissionToRecordAccepted  = grantResults[0] == PackageManager.PERMISSION_GRANTED;
+                break;
+        }
+        if (!permissionToRecordAccepted ) finish();
+
     }
 
     private void seenMessage(final String userid){
@@ -327,18 +397,17 @@ public class MessageActivity extends AppCompatActivity {
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
                 for(DataSnapshot snapshot: dataSnapshot.getChildren()){
                     Token token = snapshot.getValue(Token.class);
-                    Data data = new Data(fuser.getUid(), R.mipmap.logo2_foreground, username+": "+message,
+                    Data data = new Data(fuser.getUid(), R.drawable.ic_noti, username+": "+message,
                             "New Message", receiver);
 
                     Sender sender = new Sender(data, token.getToken());
-
                     apiService.sendNotification(sender)
                             .enqueue(new Callback<MyResponse>() {
                                 @Override
                                 public void onResponse(Call<MyResponse> call, Response<MyResponse> response) {
                                     if(response.code() == 200){
                                         if(response.body().success!=1){
-                                            Toast.makeText(MessageActivity.this, "Failed!", Toast.LENGTH_SHORT).show();
+                                            Toast.makeText(MessageActivity.this, "Failed! (Sending notification)", Toast.LENGTH_SHORT).show();
                                         }
                                     }
                                 }
@@ -376,7 +445,6 @@ public class MessageActivity extends AppCompatActivity {
                 }
                 messageAdapter = new MessageAdapter(MessageActivity.this, mChats, imageURL);
                 recyclerView.setAdapter(messageAdapter);
-                ((SimpleItemAnimator) recyclerView.getItemAnimator()).setSupportsChangeAnimations(false);
 
             }
 
@@ -392,8 +460,6 @@ public class MessageActivity extends AppCompatActivity {
         editor.putString("currentuser", userid);
         editor.apply();
     }
-
-
 
     private void openImage() {
         Intent intent = new Intent();
@@ -411,52 +477,10 @@ public class MessageActivity extends AppCompatActivity {
 
         if(imageUri != null){
             progressBar.setVisibility(View.VISIBLE);
-            final StorageReference fileReference = storageReference.child(System.currentTimeMillis()
+            final StorageReference fileReference = storageReference.child("images").child(System.currentTimeMillis()
                     + "." +getFileExtension(imageUri));
             uploadTask = fileReference.putFile(imageUri);
-            uploadTask.addOnProgressListener(new OnProgressListener<UploadTask.TaskSnapshot>() {
-                @Override
-                public void onProgress(@NonNull UploadTask.TaskSnapshot taskSnapshot) {
-                    double progress = (100.0 * taskSnapshot.getBytesTransferred()) / taskSnapshot.getTotalByteCount();
-                    Log.d("PROGRESS", "Upload is " + progress + "% done");
-                    int currentprogress = (int) Math.round(progress);
-                    progressBar.setProgress(currentprogress);
-                }
-            }).addOnPausedListener(new OnPausedListener<UploadTask.TaskSnapshot>() {
-                @Override
-                public void onPaused(UploadTask.TaskSnapshot taskSnapshot) {
-                    System.out.println("Upload is paused");
-                }
-            });;
-            uploadTask.continueWithTask(new Continuation<UploadTask.TaskSnapshot, Task<Uri>>() {
-                @Override
-                public Task<Uri> then(@NonNull Task<UploadTask.TaskSnapshot> task) throws Exception {
-                    if (!task.isSuccessful())
-                        throw task.getException();
-                    return fileReference.getDownloadUrl();
-                }
-            }).addOnCompleteListener(new OnCompleteListener<Uri>() {
-                @Override
-                public void onComplete(@NonNull Task<Uri> task) {
-                    if(task.isSuccessful()) {
-                        Uri downloadUri = task.getResult();
-                        String mUri = downloadUri.toString();
-                        String type = "image";
-                       sendMessage(sender, receiver, mUri, type);
-                        progressBar.setVisibility(View.GONE);
-
-                    }else {
-                        Toast.makeText(MessageActivity.this, "Failed to attach photo!", Toast.LENGTH_SHORT).show();
-                        progressBar.setVisibility(View.GONE);
-                    }
-                }
-            }).addOnFailureListener(new OnFailureListener() {
-                @Override
-                public void onFailure(@NonNull Exception e) {
-                    Toast.makeText(MessageActivity.this, e.getMessage(), Toast.LENGTH_SHORT).show();
-                    progressBar.setVisibility(View.GONE);
-                }
-            });
+            uploadingProcess("image", sender, receiver, fileReference);
         }else{
             Toast.makeText(MessageActivity.this, "No image selected", Toast.LENGTH_SHORT).show();
             progressBar.setVisibility(View.GONE);
@@ -480,6 +504,38 @@ public class MessageActivity extends AppCompatActivity {
             }
         }
     }
+
+    private void startRecording() {
+        recorder = new MediaRecorder();
+        recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+        recorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
+        recorder.setOutputFile(fileName);
+        recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
+
+        try {
+            recorder.prepare();
+        } catch (IOException e) {
+            Log.e(LOG_TAG, "prepare() failed");
+        }
+
+        recorder.start();
+    }
+
+    private void stopRecording() {
+        recorder.stop();
+        recorder.release();
+        recorder = null;
+        uploadAudio();
+    }
+
+    private void uploadAudio() {
+        progressBar.setVisibility(View.VISIBLE);
+        StorageReference filepath = storageReference.child("audio").child(System.currentTimeMillis()+".3gp");
+        Uri uri = Uri.fromFile(new File(fileName));
+        uploadTask = filepath.putFile(uri);
+        uploadingProcess("audio", fuser.getUid(), userid, filepath);
+    }
+
     private void status(String status){
         databaseReference = FirebaseDatabase.getInstance().getReference("Users").child(fuser.getUid());
 
@@ -489,7 +545,50 @@ public class MessageActivity extends AppCompatActivity {
         databaseReference.updateChildren(hashMap);
     }
 
+    private void uploadingProcess(final String type, final String sender, final String receiver, final StorageReference fileReference){
+        uploadTask.addOnProgressListener(new OnProgressListener<UploadTask.TaskSnapshot>() {
+            @Override
+            public void onProgress(@NonNull UploadTask.TaskSnapshot taskSnapshot) {
+                double progress = (100.0 * taskSnapshot.getBytesTransferred()) / taskSnapshot.getTotalByteCount();
+                Log.d("PROGRESS", "Upload is " + progress + "% done");
+                int currentprogress = (int) Math.round(progress);
+                progressBar.setProgress(currentprogress);
+            }
+        }).addOnPausedListener(new OnPausedListener<UploadTask.TaskSnapshot>() {
+            @Override
+            public void onPaused(UploadTask.TaskSnapshot taskSnapshot) {
+                System.out.println("Upload is paused");
+            }
+        });;
+        uploadTask.continueWithTask(new Continuation<UploadTask.TaskSnapshot, Task<Uri>>() {
+            @Override
+            public Task<Uri> then(@NonNull Task<UploadTask.TaskSnapshot> task) throws Exception {
+                if (!task.isSuccessful())
+                    throw task.getException();
+                return fileReference.getDownloadUrl();
+            }
+        }).addOnCompleteListener(new OnCompleteListener<Uri>() {
+            @Override
+            public void onComplete(@NonNull Task<Uri> task) {
+                if(task.isSuccessful()) {
+                    Uri downloadUri = task.getResult();
+                    String mUri = downloadUri.toString();
+                    sendMessage(sender, receiver, mUri, type);
+                    progressBar.setVisibility(View.GONE);
 
+                }else {
+                    Toast.makeText(MessageActivity.this, "Failed to attach photo/audio!", Toast.LENGTH_SHORT).show();
+                    progressBar.setVisibility(View.GONE);
+                }
+            }
+        }).addOnFailureListener(new OnFailureListener() {
+            @Override
+            public void onFailure(@NonNull Exception e) {
+                Toast.makeText(MessageActivity.this, e.getMessage(), Toast.LENGTH_SHORT).show();
+                progressBar.setVisibility(View.GONE);
+            }
+        });
+    }
     @Override
     protected void onResume() {
         super.onResume();

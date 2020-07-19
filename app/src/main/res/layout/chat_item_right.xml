@@ -39,6 +39,15 @@
                     android:src="@mipmap/ic_launcher"
                     android:layout_gravity="end"
                     android:scaleType="centerCrop"/>
+
+                <Button
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_below="@id/image_message"
+                    android:text="Play Audio"
+                    android:id="@+id/play_audio"
+                    android:textColor="@android:color/white"
+                    android:backgroundTint="@color/colorPrimary"/>
             </RelativeLayout>
 
         </LinearLayout>

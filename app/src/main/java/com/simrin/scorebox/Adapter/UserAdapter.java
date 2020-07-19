@@ -130,18 +130,16 @@ public class UserAdapter extends RecyclerView.Adapter<UserAdapter.ViewHolder> {
                     }
                 }
 
-                switch (theLastMessage){
-                    case "default":
-                        last_msg.setText("No Message");
-                        break;
-
-                    default:
-                        if(type.equals("image")){
-                            last_msg.setText("Image");
-                        }else{
-                            last_msg.setText(theLastMessage);
-                        }
-                        break;
+                if ("default".equals(theLastMessage)) {
+                    last_msg.setText("No Message");
+                } else {
+                    if (type.equals("image")) {
+                        last_msg.setText("Image");
+                    } else if(type.equals("audio")){
+                        last_msg.setText("Audio Message");
+                    } else{
+                        last_msg.setText(theLastMessage);
+                    }
                 }
 
                 theLastMessage = "default";
