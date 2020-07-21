@@ -121,7 +121,6 @@ public class UserAdapter extends RecyclerView.Adapter<UserAdapter.ViewHolder> {
                 for(DataSnapshot snapshot: dataSnapshot.getChildren()){
                     Chat chat = snapshot.getValue(Chat.class);
                     assert chat != null;
-                    assert firebaseUser != null;
                     //changes here app crashes when logout
                     if(chat.getReceiver().equals(userid) && chat.getSender().equals(firebaseUser.getUid()) ||
                             chat.getReceiver().equals(firebaseUser.getUid()) && chat.getSender().equals(userid)){

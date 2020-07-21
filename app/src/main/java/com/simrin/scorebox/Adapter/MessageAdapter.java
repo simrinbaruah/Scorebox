@@ -226,10 +226,9 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
             Log.e("AUDIO PLAYING", "prepare() failed");
         }
     }
-
-
     private void stopPlaying() {
         player.release();
         player = null;
     }
+
 }

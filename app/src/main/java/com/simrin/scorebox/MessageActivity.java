@@ -5,6 +5,8 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.SimpleItemAnimator;
@@ -18,12 +20,18 @@ import retrofit2.Response;
 import android.Manifest;
 import android.app.ProgressDialog;
 import android.content.ContentResolver;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.media.MediaRecorder;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.Vibrator;
+
+import android.provider.MediaStore;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
@@ -85,7 +93,7 @@ public class MessageActivity extends AppCompatActivity {
     FirebaseUser fuser;
     DatabaseReference databaseReference;
 
-    ImageButton btn_send, btn_attach, btn_voice;
+    ImageButton btn_send, btn_attach, btn_voice, btn_camera;
     EditText text_send;
    ProgressBar progressBar;
 
@@ -110,13 +118,12 @@ public class MessageActivity extends AppCompatActivity {
 
     private static final String LOG_TAG = "AudioRecordTest";
     private static final int REQUEST_RECORD_AUDIO_PERMISSION = 200;
+    private static final int CAMERA_PERMISSION_CODE = 100;
+    private static final int STORAGE_PERMISSION_CODE = 101;
     private static String fileName = null;
-    // Requesting permission to RECORD_AUDIO
-    private boolean permissionToRecordAccepted = false;
-    private String [] permissions = {Manifest.permission.RECORD_AUDIO};
     private MediaRecorder recorder;
-
-
+    private static int CLICK_THRESHOLD = 1000;
+    private boolean isCamera = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -152,6 +159,7 @@ public class MessageActivity extends AppCompatActivity {
         text_send = findViewById(R.id.text_send);
         btn_attach = findViewById(R.id.btn_attach);
         btn_voice = findViewById(R.id.btn_voice);
+        btn_camera = findViewById(R.id.btn_camera);
         progressBar = findViewById(R.id.progressBar);
         progressBar.setVisibility(View.GONE);
 
@@ -159,6 +167,8 @@ public class MessageActivity extends AppCompatActivity {
 
          intent = getIntent();
          userid = intent.getStringExtra("userid");
+         boolean send = intent.getBooleanExtra("send", false);
+         sendPreview(send);
          fuser = FirebaseAuth.getInstance().getCurrentUser();
 
          btn_attach.setOnClickListener(new View.OnClickListener() {
@@ -201,25 +211,67 @@ public class MessageActivity extends AppCompatActivity {
 
         fileName = getExternalCacheDir().getAbsolutePath();
         fileName += "/"+System.currentTimeMillis()+".3gp";
-        ActivityCompat.requestPermissions(this, permissions, REQUEST_RECORD_AUDIO_PERMISSION);
+        final Vibrator v = (Vibrator)getSystemService(Context.VIBRATOR_SERVICE);
+
 
         btn_voice.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View view, MotionEvent motionEvent) {
-                if(motionEvent.getAction() == MotionEvent.ACTION_DOWN){
-                    startRecording();
-                    text_send.setText("Recording now...");
-                }else if(motionEvent.getAction() == MotionEvent.ACTION_UP){
-                    stopRecording();
-                    text_send.setText("");
+                if(ContextCompat.checkSelfPermission(MessageActivity.this,
+                        Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED){
+                    checkPermission(
+                            Manifest.permission.RECORD_AUDIO,
+                            REQUEST_RECORD_AUDIO_PERMISSION);
+                }else{
+                    long duration = motionEvent.getEventTime() - motionEvent.getDownTime();
+                    if(motionEvent.getAction() == MotionEvent.ACTION_DOWN){
+                        v.vibrate(100);
+                        startRecording();
+                        text_send.setText("Recording now...");
+                    }else if(motionEvent.getAction() == MotionEvent.ACTION_UP){
+                        if(duration < CLICK_THRESHOLD){
+                            Toast.makeText(MessageActivity.this, "Press and hold to record", Toast.LENGTH_SHORT).show();
+                        }else{
+                            v.vibrate(100);
+                            stopRecording();
+                        }
+                        text_send.setText("");
+                    }
                 }
                 return false;
             }
         });
 
+        btn_camera.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if(ContextCompat.checkSelfPermission(MessageActivity.this,
+                        Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED ||
+                        ContextCompat.checkSelfPermission(MessageActivity.this,
+                                Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED){
+                    checkPermission(
+                            Manifest.permission.CAMERA,
+                            CAMERA_PERMISSION_CODE);
+                    checkPermission(
+                            Manifest.permission.READ_EXTERNAL_STORAGE,
+                            STORAGE_PERMISSION_CODE);
+                }else{
+                    Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                    if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
+                        isCamera = true;
+//                        File file = new File(Environment.getExternalStorageDirectory(), "Photo.jpg");
+//                        imageUri = FileProvider.getUriForFile(MessageActivity.this,
+//                                MessageActivity.this.getApplicationContext().getPackageName() + ".provider", file);
+//                        Log.d("imageURI1", String.valueOf(imageUri));
+//                        intent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri);
+                        startActivityForResult(takePictureIntent, IMAGE_REQUEST);
+                    }
+                }
+            }
+        });
 
          databaseReference = FirebaseDatabase.getInstance().getReference("Users").child(userid);
-
+         databaseReference.keepSynced(true);
          databaseReference.addValueEventListener(new ValueEventListener() {
              @Override
              public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
@@ -246,17 +298,27 @@ public class MessageActivity extends AppCompatActivity {
 
          seenMessage(userid);
     }
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        switch (requestCode){
-            case REQUEST_RECORD_AUDIO_PERMISSION:
-                permissionToRecordAccepted  = grantResults[0] == PackageManager.PERMISSION_GRANTED;
-                break;
-        }
-        if (!permissionToRecordAccepted ) finish();
 
+    public void checkPermission(String permission, int requestCode) {
+        if (ContextCompat.checkSelfPermission(MessageActivity.this, permission)
+                == PackageManager.PERMISSION_DENIED) {
+            // Requesting the permission
+            ActivityCompat.requestPermissions(MessageActivity.this,
+                    new String[]{permission},
+                    requestCode);
+        }
     }
+
+//        @Override
+//    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+//        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+//            Log.d(LOG_TAG, "Here2");
+//        switch (requestCode){
+//            case REQUEST_RECORD_AUDIO_PERMISSION:
+//                permissionToRecordAccepted  = grantResults[0] == PackageManager.PERMISSION_GRANTED;
+//                break;
+//        }
+//    }
 
     private void seenMessage(final String userid){
 
@@ -377,7 +439,13 @@ public class MessageActivity extends AppCompatActivity {
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
                 User user = dataSnapshot.getValue(User.class);
                 if(notify) {
-                    sendNotification(receiver, user.getName(), message);
+                    String media=message;
+                    if(type.equals("audio")){
+                        media="Sent an audio";
+                    }else if(type.equals("image")){
+                        media ="Sent an image";
+                    }
+                    sendNotification(receiver, user.getName(), media);
                 }
                     notify = false;
             }
@@ -490,19 +558,53 @@ public class MessageActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-
+        if(requestCode==2){
+            sendPreview(true);
+        }
         if(requestCode == IMAGE_REQUEST && resultCode == RESULT_OK
-                && data!=null && data.getData() != null){
+                && data!=null){
             fuser = FirebaseAuth.getInstance().getCurrentUser();
+            if(isCamera){
+                if(data.getExtras() != null) {
+                    Bitmap photo = (Bitmap) data.getExtras().get("data");
+                    imageUri = getImageUri(getApplicationContext(), photo);
 
-            imageUri = data.getData();
+                    if (uploadTask != null && uploadTask.isInProgress()) {
+                        Toast.makeText(this, "Upload in progress", Toast.LENGTH_SHORT).show();
+                    } else {
+                        uploadImage(fuser.getUid(), userid);
+                    }
+                    isCamera = false;
+                }
+            }else{
+                if(data.getData()!=null){
+                    imageUri = data.getData();
+                    Log.d("imageURI", String.valueOf(imageUri));
+                    startActivityForResult(new Intent(this, ImageViewActivity.class)
+                            .putExtra("URLsender", String.valueOf(imageUri)), 2);
+                }
 
+            }
+
+        }
+
+    }
+    public Uri getImageUri(Context inContext, Bitmap inImage) {
+        Bitmap OutImage = Bitmap.createScaledBitmap(inImage, 1000, 1000,true);
+        String path = MediaStore.Images.Media.insertImage(inContext.getContentResolver(), OutImage, "Title", null);
+        return Uri.parse(path);
+    }
+
+    private void sendPreview(boolean send){
+        fuser = FirebaseAuth.getInstance().getCurrentUser();
+        if(send){
             if(uploadTask != null && uploadTask.isInProgress()){
                 Toast.makeText(this, "Upload in progress", Toast.LENGTH_SHORT).show();
             }else{
                 uploadImage(fuser.getUid(), userid);
             }
         }
+
     }
 
     private void startRecording() {
@@ -570,6 +672,7 @@ public class MessageActivity extends AppCompatActivity {
         }).addOnCompleteListener(new OnCompleteListener<Uri>() {
             @Override
             public void onComplete(@NonNull Task<Uri> task) {
+                Log.d("imageURI4", String.valueOf(task));
                 if(task.isSuccessful()) {
                     Uri downloadUri = task.getResult();
                     String mUri = downloadUri.toString();
@@ -584,11 +687,13 @@ public class MessageActivity extends AppCompatActivity {
         }).addOnFailureListener(new OnFailureListener() {
             @Override
             public void onFailure(@NonNull Exception e) {
-                Toast.makeText(MessageActivity.this, e.getMessage(), Toast.LENGTH_SHORT).show();
+                Toast.makeText(MessageActivity.this, e.getLocalizedMessage(), Toast.LENGTH_SHORT).show();
                 progressBar.setVisibility(View.GONE);
             }
         });
     }
+
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -604,5 +709,14 @@ public class MessageActivity extends AppCompatActivity {
         databaseReference.removeEventListener(receiverseenListener);
         status("offline");
         currentUser("none");
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        if (recorder != null) {
+            recorder.release();
+            recorder = null;
+        }
     }
 }
