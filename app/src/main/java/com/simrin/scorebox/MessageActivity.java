@@ -9,8 +9,6 @@ import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-import androidx.recyclerview.widget.SimpleItemAnimator;
-import androidx.swiperefreshlayout.widget.CircularProgressDrawable;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 import retrofit2.Call;
@@ -18,13 +16,14 @@ import retrofit2.Callback;
 import retrofit2.Response;
 
 import android.Manifest;
-import android.app.ProgressDialog;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.media.MediaRecorder;
 import android.net.Uri;
 import android.os.Bundle;
@@ -41,6 +40,7 @@ import android.webkit.MimeTypeMap;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -48,7 +48,6 @@ import com.bumptech.glide.Glide;
 import com.google.android.gms.tasks.Continuation;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.OnFailureListener;
-import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
@@ -66,6 +65,7 @@ import com.google.firebase.storage.StorageTask;
 import com.google.firebase.storage.UploadTask;
 import com.simrin.scorebox.Adapter.MessageAdapter;
 import com.simrin.scorebox.Fragments.APIService;
+import com.simrin.scorebox.HelperClass.CompressFile;
 import com.simrin.scorebox.Model.Chat;
 import com.simrin.scorebox.Model.User;
 import com.simrin.scorebox.Notifications.Client;
@@ -75,17 +75,23 @@ import com.simrin.scorebox.Notifications.Sender;
 import com.simrin.scorebox.Notifications.Token;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 
 public class MessageActivity extends AppCompatActivity {
 
-    String userid;
+    String userid, currentPhotoPath;
+
+    RelativeLayout messageLayout;
 
     TextView username, status;
     CircleImageView profile_image;
@@ -151,6 +157,7 @@ public class MessageActivity extends AppCompatActivity {
         linearLayoutManager.setStackFromEnd(true);
         recyclerView.setLayoutManager(linearLayoutManager);
 
+        messageLayout = findViewById(R.id.message_layout);
         profile_image = findViewById(R.id.profile_image);
         status = findViewById(R.id.status);
         username = findViewById(R.id.username);
@@ -167,8 +174,6 @@ public class MessageActivity extends AppCompatActivity {
 
          intent = getIntent();
          userid = intent.getStringExtra("userid");
-         boolean send = intent.getBooleanExtra("send", false);
-         sendPreview(send);
          fuser = FirebaseAuth.getInstance().getCurrentUser();
 
          btn_attach.setOnClickListener(new View.OnClickListener() {
@@ -257,14 +262,25 @@ public class MessageActivity extends AppCompatActivity {
                             STORAGE_PERMISSION_CODE);
                 }else{
                     Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                    // Ensure that there's a camera activity to handle the intent
                     if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
                         isCamera = true;
-//                        File file = new File(Environment.getExternalStorageDirectory(), "Photo.jpg");
-//                        imageUri = FileProvider.getUriForFile(MessageActivity.this,
-//                                MessageActivity.this.getApplicationContext().getPackageName() + ".provider", file);
-//                        Log.d("imageURI1", String.valueOf(imageUri));
-//                        intent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri);
-                        startActivityForResult(takePictureIntent, IMAGE_REQUEST);
+                        // Create the File where the photo should go
+                        File photoFile = null;
+                        try {
+                            photoFile = createImageFile();
+                        } catch (IOException ex) {
+                            // Error occurred while creating the File
+                            Toast.makeText(MessageActivity.this, ex.getMessage(), Toast.LENGTH_SHORT).show();
+                        }
+                        // Continue only if the File was successfully created
+                        if (photoFile != null) {
+                            imageUri = FileProvider.getUriForFile(MessageActivity.this,
+                                    "com.simrin.chatapp.provider",
+                                    photoFile);
+                            takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri);
+                            startActivityForResult(takePictureIntent, IMAGE_REQUEST);
+                        }
                     }
                 }
             }
@@ -309,17 +325,6 @@ public class MessageActivity extends AppCompatActivity {
         }
     }
 
-//        @Override
-//    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-//        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-//            Log.d(LOG_TAG, "Here2");
-//        switch (requestCode){
-//            case REQUEST_RECORD_AUDIO_PERMISSION:
-//                permissionToRecordAccepted  = grantResults[0] == PackageManager.PERMISSION_GRANTED;
-//                break;
-//        }
-//    }
-
     private void seenMessage(final String userid){
 
         final ArrayList<String> id = new ArrayList<>();
@@ -356,6 +361,7 @@ public class MessageActivity extends AppCompatActivity {
                 for(DataSnapshot snapshot: dataSnapshot.getChildren()){
                     Chat chat=snapshot.getValue(Chat.class);
                     for(String i : id){
+                        //id error
                         if(chat.getId().equals(i)){
                             HashMap<String, Object> hashMap = new HashMap<>();
                             hashMap.put("isseen", true);
@@ -559,50 +565,32 @@ public class MessageActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if(requestCode==2){
-            sendPreview(true);
+            sendPreview();
         }
-        if(requestCode == IMAGE_REQUEST && resultCode == RESULT_OK
-                && data!=null){
-            fuser = FirebaseAuth.getInstance().getCurrentUser();
-            if(isCamera){
-                if(data.getExtras() != null) {
-                    Bitmap photo = (Bitmap) data.getExtras().get("data");
-                    imageUri = getImageUri(getApplicationContext(), photo);
-
-                    if (uploadTask != null && uploadTask.isInProgress()) {
-                        Toast.makeText(this, "Upload in progress", Toast.LENGTH_SHORT).show();
-                    } else {
-                        uploadImage(fuser.getUid(), userid);
-                    }
-                    isCamera = false;
-                }
+        if(requestCode == IMAGE_REQUEST && resultCode == RESULT_OK){
+            if(isCamera && imageUri!=null){
+                    currentPhotoPath = CompressFile.compressImage(currentPhotoPath,
+                            messageLayout.getHeight(), messageLayout.getWidth(), this);
+                imageUri = Uri.fromFile(new File(currentPhotoPath));
+                sendPreview();
+                isCamera = false;
             }else{
-                if(data.getData()!=null){
+                if(data!= null && data.getData()!=null){
                     imageUri = data.getData();
-                    Log.d("imageURI", String.valueOf(imageUri));
                     startActivityForResult(new Intent(this, ImageViewActivity.class)
                             .putExtra("URLsender", String.valueOf(imageUri)), 2);
                 }
 
             }
-
         }
-
-    }
-    public Uri getImageUri(Context inContext, Bitmap inImage) {
-        Bitmap OutImage = Bitmap.createScaledBitmap(inImage, 1000, 1000,true);
-        String path = MediaStore.Images.Media.insertImage(inContext.getContentResolver(), OutImage, "Title", null);
-        return Uri.parse(path);
     }
 
-    private void sendPreview(boolean send){
+    private void sendPreview(){
         fuser = FirebaseAuth.getInstance().getCurrentUser();
-        if(send){
-            if(uploadTask != null && uploadTask.isInProgress()){
-                Toast.makeText(this, "Upload in progress", Toast.LENGTH_SHORT).show();
-            }else{
-                uploadImage(fuser.getUid(), userid);
-            }
+        if(uploadTask != null && uploadTask.isInProgress()){
+            Toast.makeText(this, "Upload in progress", Toast.LENGTH_SHORT).show();
+        }else{
+            uploadImage(fuser.getUid(), userid);
         }
 
     }
@@ -693,6 +681,21 @@ public class MessageActivity extends AppCompatActivity {
         });
     }
 
+    private File createImageFile() throws IOException {
+        // Create an image file name
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String imageFileName = "JPEG_" + timeStamp + "_";
+        File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+        File image = File.createTempFile(
+                imageFileName,  /* prefix */
+                ".jpg",         /* suffix */
+                storageDir      /* directory */
+        );
+
+        // Save a file: path for use with ACTION_VIEW intents
+        currentPhotoPath = image.getAbsolutePath();
+        return image;
+    }
 
     @Override
     protected void onResume() {
