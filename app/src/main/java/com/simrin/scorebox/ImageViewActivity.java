@@ -3,15 +3,13 @@ package com.simrin.scorebox;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.content.Intent;
-import android.media.Image;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
-import android.widget.ImageView;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.request.RequestOptions;
+import com.github.chrisbanes.photoview.PhotoView;
 
 public class ImageViewActivity extends AppCompatActivity {
 
@@ -20,7 +18,7 @@ public class ImageViewActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_image_view);
 
-        ImageView full_image_view = findViewById(R.id.full_image_view);
+        PhotoView full_image_view = findViewById(R.id.full_image_view);
         Button send_image = findViewById(R.id.send_image);
 
         Intent intent = getIntent();
@@ -42,7 +40,9 @@ public class ImageViewActivity extends AppCompatActivity {
         send_image.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                onBackPressed();
+                Intent intent=new Intent();
+                setResult(RESULT_OK, intent);
+                finish();
             }
         });
     }
@@ -50,8 +50,6 @@ public class ImageViewActivity extends AppCompatActivity {
     @Override
     public void onBackPressed() {
         super.onBackPressed();
-        Intent intent=new Intent();
-        setResult(RESULT_OK, intent);
         finish();
     }
 }

@@ -119,7 +119,7 @@ public class ProfileFragment extends Fragment {
     private void openImage() {
         Intent intent = new Intent();
         intent.setType("image/*");
-        intent.setAction(Intent.ACTION_GET_CONTENT);
+        intent.setAction(Intent.ACTION_PICK);
         startActivityForResult(intent, IMAGE_REQUEST);
     }
 

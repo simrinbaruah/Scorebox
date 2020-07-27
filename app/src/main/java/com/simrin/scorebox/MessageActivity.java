@@ -2,6 +2,7 @@ package com.simrin.scorebox;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityCompat;
@@ -16,6 +17,7 @@ import retrofit2.Callback;
 import retrofit2.Response;
 
 import android.Manifest;
+import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
@@ -24,8 +26,11 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
+import android.media.ExifInterface;
 import android.media.MediaRecorder;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Vibrator;
@@ -75,10 +80,9 @@ import com.simrin.scorebox.Notifications.Sender;
 import com.simrin.scorebox.Notifications.Token;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -101,7 +105,7 @@ public class MessageActivity extends AppCompatActivity {
 
     ImageButton btn_send, btn_attach, btn_voice, btn_camera;
     EditText text_send;
-   ProgressBar progressBar;
+    ProgressBar progressBar;
 
     MessageAdapter messageAdapter;
     List<Chat> mChats;
@@ -119,6 +123,7 @@ public class MessageActivity extends AppCompatActivity {
     boolean notify = false;
 
     private static final int IMAGE_REQUEST = 1;
+    private static final int CAMERA_REQUEST = 3;
     private StorageTask uploadTask;
     StorageReference storageReference;
 
@@ -126,10 +131,15 @@ public class MessageActivity extends AppCompatActivity {
     private static final int REQUEST_RECORD_AUDIO_PERMISSION = 200;
     private static final int CAMERA_PERMISSION_CODE = 100;
     private static final int STORAGE_PERMISSION_CODE = 101;
+    private static final String CHILD_DIR = "Pictures";
+    private static final String TEMP_FILE_NAME = "img";
+    private static final String FILE_EXTENSION = ".jpg";
     private static String fileName = null;
+    private static final int MIN_SWIPE_DISTANCE = 150;
+    private float x1,x2;
+    private boolean isAudioCancel = false;
     private MediaRecorder recorder;
     private static int CLICK_THRESHOLD = 1000;
-    private boolean isCamera = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -230,14 +240,20 @@ public class MessageActivity extends AppCompatActivity {
                 }else{
                     long duration = motionEvent.getEventTime() - motionEvent.getDownTime();
                     if(motionEvent.getAction() == MotionEvent.ACTION_DOWN){
+                        x1=motionEvent.getX();
                         v.vibrate(100);
                         startRecording();
-                        text_send.setText("Recording now...");
+                        text_send.setText("Recording.. Swipe to cancel");
                     }else if(motionEvent.getAction() == MotionEvent.ACTION_UP){
+                        x2=motionEvent.getX();
                         if(duration < CLICK_THRESHOLD){
                             Toast.makeText(MessageActivity.this, "Press and hold to record", Toast.LENGTH_SHORT).show();
                         }else{
                             v.vibrate(100);
+                            if(x1 - x2 > MIN_SWIPE_DISTANCE){
+                                isAudioCancel = true;
+                                Toast.makeText(MessageActivity.this, "Recording cancelled", Toast.LENGTH_SHORT).show();
+                            }
                             stopRecording();
                         }
                         text_send.setText("");
@@ -264,7 +280,6 @@ public class MessageActivity extends AppCompatActivity {
                     Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
                     // Ensure that there's a camera activity to handle the intent
                     if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
-                        isCamera = true;
                         // Create the File where the photo should go
                         File photoFile = null;
                         try {
@@ -279,7 +294,7 @@ public class MessageActivity extends AppCompatActivity {
                                     "com.simrin.chatapp.provider",
                                     photoFile);
                             takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri);
-                            startActivityForResult(takePictureIntent, IMAGE_REQUEST);
+                            startActivityForResult(takePictureIntent, CAMERA_REQUEST);
                         }
                     }
                 }
@@ -329,6 +344,7 @@ public class MessageActivity extends AppCompatActivity {
 
         final ArrayList<String> id = new ArrayList<>();
         databaseReference = FirebaseDatabase.getInstance().getReference("Chats").child(fuser.getUid()).child(userid);
+        databaseReference.keepSynced(true);
         seenListener = databaseReference.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
@@ -355,6 +371,7 @@ public class MessageActivity extends AppCompatActivity {
 
 
         databaseReference = FirebaseDatabase.getInstance().getReference("Chats").child(userid).child(fuser.getUid());
+        databaseReference.keepSynced(true);
         receiverseenListener = databaseReference.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
@@ -475,22 +492,20 @@ public class MessageActivity extends AppCompatActivity {
                             "New Message", receiver);
 
                     Sender sender = new Sender(data, token.getToken());
-                    apiService.sendNotification(sender)
-                            .enqueue(new Callback<MyResponse>() {
-                                @Override
-                                public void onResponse(Call<MyResponse> call, Response<MyResponse> response) {
-                                    if(response.code() == 200){
-                                        if(response.body().success!=1){
-                                            Toast.makeText(MessageActivity.this, "Failed! (Sending notification)", Toast.LENGTH_SHORT).show();
-                                        }
-                                    }
+                    apiService.sendNotification(sender).enqueue(new Callback<MyResponse>() {
+                        @Override
+                        public void onResponse(Call<MyResponse> call, Response<MyResponse> response) {
+                            if(response.code() == 200){
+                                if(response.body().success!=1){
+                                    Toast.makeText(MessageActivity.this, "Failed! (Sending notification)", Toast.LENGTH_SHORT).show();
                                 }
+                            }
+                        }
+                        @Override
+                        public void onFailure(Call<MyResponse> call, Throwable t) {
 
-                                @Override
-                                public void onFailure(Call<MyResponse> call, Throwable t) {
-
-                                }
-                            });
+                        }
+                    });
                 }
             }
 
@@ -538,7 +553,7 @@ public class MessageActivity extends AppCompatActivity {
     private void openImage() {
         Intent intent = new Intent();
         intent.setType("image/*");
-        intent.setAction(Intent.ACTION_GET_CONTENT);
+        intent.setAction(Intent.ACTION_PICK);
         startActivityForResult(intent, IMAGE_REQUEST);
     }
     private String getFileExtension(Uri uri){
@@ -551,8 +566,10 @@ public class MessageActivity extends AppCompatActivity {
 
         if(imageUri != null){
             progressBar.setVisibility(View.VISIBLE);
+            String extension = getFileExtension(imageUri);
+            if(extension == null) extension = "jpg";
             final StorageReference fileReference = storageReference.child("images").child(System.currentTimeMillis()
-                    + "." +getFileExtension(imageUri));
+                    + "." +extension);
             uploadTask = fileReference.putFile(imageUri);
             uploadingProcess("image", sender, receiver, fileReference);
         }else{
@@ -564,24 +581,33 @@ public class MessageActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if(requestCode==2){
-            sendPreview();
+        int height = messageLayout.getHeight();
+        int width = messageLayout.getWidth();
+        if(requestCode==2 && resultCode == RESULT_OK){
+            if(imageUri!=null && height != 0 && width != 0){
+                String path = getRealPathFromURI(String.valueOf(imageUri));
+                Bitmap bitmap = BitmapFactory.decodeFile(path);
+                File newImageFile = createDirectoryAndSaveFile(path, bitmap, new File(path).getName());
+                path = newImageFile.getAbsolutePath();
+                Log.d("imageURI33", String.valueOf(new File(path).length()));
+                path = CompressFile.compressImage(path, height, width, this);
+                Log.d("imageURI43", String.valueOf(new File(path).length()));
+                imageUri = Uri.fromFile(new File(path));
+                sendPreview();
+            }
         }
-        if(requestCode == IMAGE_REQUEST && resultCode == RESULT_OK){
-            if(isCamera && imageUri!=null){
-                    currentPhotoPath = CompressFile.compressImage(currentPhotoPath,
-                            messageLayout.getHeight(), messageLayout.getWidth(), this);
+        if(requestCode == CAMERA_REQUEST && resultCode == RESULT_OK) {
+            if (imageUri != null && height != 0 && width != 0) {
+                currentPhotoPath = CompressFile.compressImage(currentPhotoPath, height, width, this);
                 imageUri = Uri.fromFile(new File(currentPhotoPath));
                 sendPreview();
-                isCamera = false;
-            }else{
-                if(data!= null && data.getData()!=null){
-                    imageUri = data.getData();
-                    startActivityForResult(new Intent(this, ImageViewActivity.class)
-                            .putExtra("URLsender", String.valueOf(imageUri)), 2);
-                }
-
             }
+        }
+        if(requestCode == IMAGE_REQUEST && resultCode == RESULT_OK &&
+                data!= null && data.getData()!=null){
+            imageUri = data.getData();
+            startActivityForResult(new Intent(this, ImageViewActivity.class)
+                    .putExtra("URLsender", String.valueOf(imageUri)), 2);
         }
     }
 
@@ -615,7 +641,11 @@ public class MessageActivity extends AppCompatActivity {
         recorder.stop();
         recorder.release();
         recorder = null;
-        uploadAudio();
+        if(isAudioCancel){
+            isAudioCancel=false;
+        }else{
+            uploadAudio();
+        }
     }
 
     private void uploadAudio() {
@@ -679,6 +709,70 @@ public class MessageActivity extends AppCompatActivity {
                 progressBar.setVisibility(View.GONE);
             }
         });
+    }
+
+    private File createDirectoryAndSaveFile(String filePath, Bitmap imageToSave, String fileName) {
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(filePath, options);
+        int actualHeight = options.outHeight;
+        int actualWidth = options.outWidth;
+
+        ExifInterface exif;
+        try {
+            exif = new ExifInterface(filePath);
+
+            int orientation = exif.getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION, 0);
+            Log.d("EXIF", "Exif: " + orientation);
+            Matrix matrix = new Matrix();
+            if (orientation == 6) {
+                matrix.postRotate(90);
+                Log.d("EXIF", "Exif: " + orientation);
+            } else if (orientation == 3) {
+                matrix.postRotate(180);
+                Log.d("EXIF", "Exif: " + orientation);
+            } else if (orientation == 8) {
+                matrix.postRotate(270);
+                Log.d("EXIF", "Exif: " + orientation);
+            }
+            imageToSave = Bitmap.createBitmap(imageToSave, 0, 0, actualWidth, actualHeight, matrix, true);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        File direct = new File(getFilesDir() + "/DirName");
+
+        if (!direct.exists()) {
+            File wallpaperDirectory = new File(getFilesDir()+ "/DirName/");
+            wallpaperDirectory.mkdirs();
+        }
+
+        File file = new File(getFilesDir()+ "/DirName/", fileName);
+        if (file.exists()) {
+            file.delete();
+        }
+        try {
+            FileOutputStream out = new FileOutputStream(file);
+            imageToSave.compress(Bitmap.CompressFormat.JPEG, 100, out);
+            out.flush();
+            out.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return file;
+    }
+
+    private String getRealPathFromURI(String contentURI) {
+        Uri contentUri = Uri.parse(contentURI);
+        Cursor cursor = getContentResolver().query(contentUri, null, null, null, null);
+        if (cursor == null) {
+            return contentUri.getPath();
+        } else {
+            cursor.moveToFirst();
+            int index = cursor.getColumnIndex(MediaStore.Images.ImageColumns.DATA);
+            return cursor.getString(index);
+        }
     }
 
     private File createImageFile() throws IOException {
