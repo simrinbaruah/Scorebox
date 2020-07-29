@@ -136,7 +136,9 @@ public class UserAdapter extends RecyclerView.Adapter<UserAdapter.ViewHolder> {
                         last_msg.setText("Image");
                     } else if(type.equals("audio")){
                         last_msg.setText("Audio Message");
-                    } else{
+                    } else if(type.equals("video")) {
+                        last_msg.setText("Video Message");
+                    }else{
                         last_msg.setText(theLastMessage);
                     }
                 }

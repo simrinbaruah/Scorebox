@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.media.MediaPlayer;
+import android.os.Bundle;
 import android.text.format.DateUtils;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -12,8 +13,10 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.request.RequestOptions;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
@@ -70,23 +73,27 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
         if(message_type.equals("image")) {
             holder.show_message.setVisibility(View.GONE);
             holder.play_audio.setVisibility(View.GONE);
+            holder.play_btn.setVisibility(View.GONE);
             holder.image_message.setVisibility(View.VISIBLE);
             if (isValidContextForGlide(mContext)) {
                 Glide.with(mContext).load(chat.getMessage()).apply(new RequestOptions()
-                        .fitCenter()
-                        .skipMemoryCache(true))
+                        .fitCenter())
                         .thumbnail(0.1f)
                         .into(holder.image_message);
             }
             holder.image_message.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View view) {
-                    mContext.startActivity(new Intent(mContext, ImageViewActivity.class).putExtra("URL", chat.getMessage()));
+                    Bundle extras = new Bundle();
+                    extras.putString("URL", chat.getMessage());
+                    extras.putString("type", "image");
+                    mContext.startActivity(new Intent(mContext, ImageViewActivity.class).putExtras(extras));
                 }
             });
         }else if(message_type.equals("audio")){
             holder.show_message.setVisibility(View.GONE);
             holder.image_message.setVisibility(View.GONE);
+            holder.play_btn.setVisibility(View.GONE);
             holder.play_audio.setVisibility(View.VISIBLE);
             holder.play_audio.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -109,10 +116,34 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
             if(player==null){
                 holder.play_audio.setText("Play Audio");
             }
-        }else{
+        }else if (message_type.equals("video")){
+            holder.show_message.setVisibility(View.GONE);
+            holder.play_audio.setVisibility(View.GONE);
+            holder.play_btn.setVisibility(View.VISIBLE);
+            holder.image_message.setVisibility(View.VISIBLE);
+            if (isValidContextForGlide(mContext)) {
+                long interval = 100 * 1000;
+                RequestOptions options = new RequestOptions().frame(interval);
+                Glide.with(mContext).asBitmap()
+                        .load(chat.getMessage())
+                        .apply(options)
+                        .thumbnail(0.7f)
+                        .into(holder.image_message);
+            }
+            holder.image_message.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    Bundle extras = new Bundle();
+                    extras.putString("URL", chat.getMessage());
+                    extras.putString("type", "video");
+                    mContext.startActivity(new Intent(mContext, ImageViewActivity.class).putExtras(extras));
+                }
+            });
+        } else{
             holder.show_message.setVisibility(View.VISIBLE);
             holder.show_message.setText(chat.getMessage());
             holder.image_message.setVisibility(View.GONE);
+            holder.play_btn.setVisibility(View.GONE);
             holder.play_audio.setVisibility(View.GONE);
         }
 
@@ -177,6 +208,7 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
         public TextView show_message;
         public TextView sent_time;
         public ImageView image_message;
+        public ImageView play_btn;
         public TextView txt_seen;
         public TextView date;
         public Button play_audio;
@@ -186,6 +218,7 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
 
             show_message = itemView.findViewById(R.id.show_message);
             image_message = itemView.findViewById(R.id.image_message);
+            play_btn = itemView.findViewById(R.id.play_btn);
             play_audio = itemView.findViewById(R.id.play_audio);
             txt_seen = itemView.findViewById(R.id.txt_seen);
             sent_time = itemView.findViewById(R.id.sent_time);

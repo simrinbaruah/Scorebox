@@ -18,6 +18,7 @@ import retrofit2.Response;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.ProgressDialog;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
@@ -71,6 +72,7 @@ import com.google.firebase.storage.UploadTask;
 import com.simrin.scorebox.Adapter.MessageAdapter;
 import com.simrin.scorebox.Fragments.APIService;
 import com.simrin.scorebox.HelperClass.CompressFile;
+import com.simrin.scorebox.HelperClass.VideoCompressor.VideoCompress;
 import com.simrin.scorebox.Model.Chat;
 import com.simrin.scorebox.Model.User;
 import com.simrin.scorebox.Notifications.Client;
@@ -122,18 +124,19 @@ public class MessageActivity extends AppCompatActivity {
 
     boolean notify = false;
 
-    private static final int IMAGE_REQUEST = 1;
+    private static final int MEDIA_REQUEST = 1;
+    private static final int IMAGE_REQUEST = 2;
     private static final int CAMERA_REQUEST = 3;
+    private static final int VIDEO_REQUEST = 4;
     private StorageTask uploadTask;
+
     StorageReference storageReference;
 
     private static final String LOG_TAG = "AudioRecordTest";
     private static final int REQUEST_RECORD_AUDIO_PERMISSION = 200;
     private static final int CAMERA_PERMISSION_CODE = 100;
     private static final int STORAGE_PERMISSION_CODE = 101;
-    private static final String CHILD_DIR = "Pictures";
-    private static final String TEMP_FILE_NAME = "img";
-    private static final String FILE_EXTENSION = ".jpg";
+    private File tempVideoFile = null;
     private static String fileName = null;
     private static final int MIN_SWIPE_DISTANCE = 150;
     private float x1,x2;
@@ -462,11 +465,13 @@ public class MessageActivity extends AppCompatActivity {
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
                 User user = dataSnapshot.getValue(User.class);
                 if(notify) {
-                    String media=message;
+                    String media;
                     if(type.equals("audio")){
                         media="Sent an audio";
                     }else if(type.equals("image")){
                         media ="Sent an image";
+                    }else{
+                        media = message;
                     }
                     sendNotification(receiver, user.getName(), media);
                 }
@@ -552,9 +557,9 @@ public class MessageActivity extends AppCompatActivity {
 
     private void openImage() {
         Intent intent = new Intent();
-        intent.setType("image/*");
+        intent.setType("image/* video/*");
         intent.setAction(Intent.ACTION_PICK);
-        startActivityForResult(intent, IMAGE_REQUEST);
+        startActivityForResult(intent, MEDIA_REQUEST);
     }
     private String getFileExtension(Uri uri){
         ContentResolver contentResolver = getContentResolver();
@@ -583,7 +588,7 @@ public class MessageActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
         int height = messageLayout.getHeight();
         int width = messageLayout.getWidth();
-        if(requestCode==2 && resultCode == RESULT_OK){
+        if(requestCode==IMAGE_REQUEST && resultCode == RESULT_OK){
             if(imageUri!=null && height != 0 && width != 0){
                 String path = getRealPathFromURI(String.valueOf(imageUri));
                 Bitmap bitmap = BitmapFactory.decodeFile(path);
@@ -596,6 +601,17 @@ public class MessageActivity extends AppCompatActivity {
                 sendPreview();
             }
         }
+        if(requestCode == VIDEO_REQUEST && resultCode==RESULT_OK){
+            try {
+                tempVideoFile = createVideoFile();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            if(tempVideoFile!=null){
+                compressVideo(tempVideoFile.getPath());
+            }
+
+        }
         if(requestCode == CAMERA_REQUEST && resultCode == RESULT_OK) {
             if (imageUri != null && height != 0 && width != 0) {
                 currentPhotoPath = CompressFile.compressImage(currentPhotoPath, height, width, this);
@@ -603,12 +619,52 @@ public class MessageActivity extends AppCompatActivity {
                 sendPreview();
             }
         }
-        if(requestCode == IMAGE_REQUEST && resultCode == RESULT_OK &&
+        if(requestCode == MEDIA_REQUEST && resultCode == RESULT_OK &&
                 data!= null && data.getData()!=null){
             imageUri = data.getData();
-            startActivityForResult(new Intent(this, ImageViewActivity.class)
-                    .putExtra("URLsender", String.valueOf(imageUri)), 2);
+
+            Bundle extras = new Bundle();
+            extras.putString("URLsender", String.valueOf(imageUri));
+
+            ContentResolver cr = getContentResolver();
+            String mime = cr.getType(imageUri);
+            if(mime.toLowerCase().contains("video")) {
+                extras.putString("type", "video");
+                startActivityForResult(new Intent(this, ImageViewActivity.class)
+                    .putExtras(extras), VIDEO_REQUEST);
+            }else if(mime.toLowerCase().contains("image")){
+                extras.putString("type", "image");
+                            startActivityForResult(new Intent(this, ImageViewActivity.class)
+                    .putExtras(extras), IMAGE_REQUEST);
+            }
         }
+    }
+
+    private void compressVideo(String path) {
+        final ProgressDialog pd = new ProgressDialog(this);
+        VideoCompress.compressVideoLow(getRealPathFromURI(imageUri.toString()), path, new VideoCompress.CompressListener() {
+            @Override
+            public void onStart() {
+
+            }
+
+            @Override
+            public void onSuccess() {
+                pd.dismiss();
+                uploadVideo();
+            }
+
+            @Override
+            public void onFail() {
+                Toast.makeText(MessageActivity.this, "Compression Failed", Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onProgress(float percent) {
+                pd.setMessage("Compressing:"+(int)percent+"%");
+                pd.show();
+            }
+        });
     }
 
     private void sendPreview(){
@@ -656,6 +712,14 @@ public class MessageActivity extends AppCompatActivity {
         uploadingProcess("audio", fuser.getUid(), userid, filepath);
     }
 
+    private void uploadVideo() {
+        progressBar.setVisibility(View.VISIBLE);
+        StorageReference filepath = storageReference.child("video").child(System.currentTimeMillis()+".mp4");
+        Uri uri = Uri.fromFile(tempVideoFile);
+        uploadTask = filepath.putFile(uri);
+        uploadingProcess("video", fuser.getUid(), userid, filepath);
+    }
+
     private void status(String status){
         databaseReference = FirebaseDatabase.getInstance().getReference("Users").child(fuser.getUid());
 
@@ -690,7 +754,6 @@ public class MessageActivity extends AppCompatActivity {
         }).addOnCompleteListener(new OnCompleteListener<Uri>() {
             @Override
             public void onComplete(@NonNull Task<Uri> task) {
-                Log.d("imageURI4", String.valueOf(task));
                 if(task.isSuccessful()) {
                     Uri downloadUri = task.getResult();
                     String mUri = downloadUri.toString();
@@ -789,6 +852,21 @@ public class MessageActivity extends AppCompatActivity {
         // Save a file: path for use with ACTION_VIEW intents
         currentPhotoPath = image.getAbsolutePath();
         return image;
+    }
+
+    private File createVideoFile() throws IOException {
+        // Create an image file name
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String videoFileName = "VID_" + timeStamp + "_";
+        File storageDir = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+        File video = File.createTempFile(
+                videoFileName,  /* prefix */
+                ".mp4",         /* suffix */
+                storageDir      /* directory */
+        );
+
+        // Save a file: path for use with ACTION_VIEW intents
+        return video;
     }
 
     @Override
