@@ -13,7 +13,6 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
@@ -43,14 +42,26 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
     private List<Chat> mChats;
     private String imageURL;
     private MediaPlayer player;
-    private boolean complete = false;
+    private File imageDirectory, videoDirectory;
+    private File[] imageFiles, videoFiles;
 
     FirebaseUser fuser;
 
-    public MessageAdapter(Context mContext, List<Chat> mChats, String imageURL){
+    public MessageAdapter(Context mContext, String userid, List<Chat> mChats, String imageURL){
         this.mChats = mChats;
         this.mContext = mContext;
         this.imageURL=imageURL;
+        File sentImagesFolder = new File(mContext.getFilesDir() + File.separator + userid +
+                File.separator + "images");
+        Log.d("Files", "Path: " + sentImagesFolder.getPath());
+        imageDirectory = new File(sentImagesFolder.getPath());
+        imageFiles = imageDirectory.listFiles();
+
+        File sentVideoFolder = new File(mContext.getFilesDir() + File.separator + userid +
+                File.separator + "video");
+        Log.d("Files", "Path: " + sentVideoFolder.getPath());
+        videoDirectory = new File(sentVideoFolder.getPath());
+        videoFiles = videoDirectory.listFiles();
     }
 
     @NonNull
@@ -70,81 +81,130 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
         final Chat chat=mChats.get(position);
         holder.sent_time.setText(chat.getTimestamp().split(" ")[1]);
         String message_type = chat.getType();
-        if(message_type.equals("image")) {
-            holder.show_message.setVisibility(View.GONE);
-            holder.play_audio.setVisibility(View.GONE);
-            holder.play_btn.setVisibility(View.GONE);
-            holder.image_message.setVisibility(View.VISIBLE);
-            if (isValidContextForGlide(mContext)) {
-                Glide.with(mContext).load(chat.getMessage()).apply(new RequestOptions()
-                        .fitCenter())
-                        .thumbnail(0.1f)
-                        .into(holder.image_message);
-            }
-            holder.image_message.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View view) {
-                    Bundle extras = new Bundle();
-                    extras.putString("URL", chat.getMessage());
-                    extras.putString("type", "image");
-                    mContext.startActivity(new Intent(mContext, ImageViewActivity.class).putExtras(extras));
-                }
-            });
-        }else if(message_type.equals("audio")){
-            holder.show_message.setVisibility(View.GONE);
-            holder.image_message.setVisibility(View.GONE);
-            holder.play_btn.setVisibility(View.GONE);
-            holder.play_audio.setVisibility(View.VISIBLE);
-            holder.play_audio.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View view) {
-                    if(holder.play_audio.getText().equals("Play Audio")){
-                        holder.play_audio.setText("Stop Audio");
-                        startPlaying(chat.getMessage());
-                        player.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-                            @Override
-                            public void onCompletion(MediaPlayer mediaPlayer) {
-                                holder.play_audio.setText("Play Audio");
+        switch (message_type) {
+            case "image":
+                holder.show_message.setVisibility(View.GONE);
+                holder.play_audio.setVisibility(View.GONE);
+                holder.play_btn.setVisibility(View.GONE);
+                holder.image_message.setVisibility(View.VISIBLE);
+                String imageName = chat.getMessage();
+                if (imageName.contains("JPEG")) {
+                    imageName = imageName.substring(imageName.indexOf("JPEG"), imageName.indexOf(".jpg"));
+                    Log.d("imageName", imageName);
+                    if (imageDirectory.exists()) {
+                        Log.d("Files", "Size: " + imageFiles.length);
+                        for (File file : imageFiles) {
+                            Log.d("Files", "FileName:" + file);
+                            String fileName = file.getName().split("\\.", -1)[0];
+                            if (fileName.equals(imageName)) {
+                                Glide.with(mContext).load(file).apply(new RequestOptions()
+                                        .fitCenter()
+                                        .diskCacheStrategy(DiskCacheStrategy.ALL))
+                                        .thumbnail(0.5f)
+                                        .into(holder.image_message);
                             }
-                        });
-                    }else if(holder.play_audio.getText().equals("Stop Audio")){
-                        holder.play_audio.setText("Play Audio");
-                        stopPlaying();
+                        }
+                    }
+                } else {
+                    if (isValidContextForGlide(mContext)) {
+                        Glide.with(mContext).load(chat.getMessage()).apply(new RequestOptions()
+                                .fitCenter()
+                                .diskCacheStrategy(DiskCacheStrategy.ALL))
+                                .thumbnail(0.5f)
+                                .into(holder.image_message);
                     }
                 }
-            });
-            if(player==null){
-                holder.play_audio.setText("Play Audio");
-            }
-        }else if (message_type.equals("video")){
-            holder.show_message.setVisibility(View.GONE);
-            holder.play_audio.setVisibility(View.GONE);
-            holder.play_btn.setVisibility(View.VISIBLE);
-            holder.image_message.setVisibility(View.VISIBLE);
-            if (isValidContextForGlide(mContext)) {
-                long interval = 100 * 1000;
-                RequestOptions options = new RequestOptions().frame(interval);
-                Glide.with(mContext).asBitmap()
-                        .load(chat.getMessage())
-                        .apply(options)
-                        .thumbnail(0.7f)
-                        .into(holder.image_message);
-            }
-            holder.image_message.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View view) {
-                    Bundle extras = new Bundle();
-                    extras.putString("URL", chat.getMessage());
-                    extras.putString("type", "video");
-                    mContext.startActivity(new Intent(mContext, ImageViewActivity.class).putExtras(extras));
+                holder.image_message.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        Bundle extras = new Bundle();
+                        extras.putString("URL", chat.getMessage());
+                        extras.putString("type", "image");
+                        mContext.startActivity(new Intent(mContext, ImageViewActivity.class).putExtras(extras));
+                    }
+                });
+                break;
+            case "audio":
+                holder.show_message.setVisibility(View.GONE);
+                holder.image_message.setVisibility(View.GONE);
+                holder.play_btn.setVisibility(View.GONE);
+                holder.play_audio.setVisibility(View.VISIBLE);
+                holder.play_audio.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        if (holder.play_audio.getText().equals("Play Audio")) {
+                            holder.play_audio.setText("Stop Audio");
+                            startPlaying(chat.getMessage());
+                            player.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                                @Override
+                                public void onCompletion(MediaPlayer mediaPlayer) {
+                                    holder.play_audio.setText("Play Audio");
+                                }
+                            });
+                        } else if (holder.play_audio.getText().equals("Stop Audio")) {
+                            holder.play_audio.setText("Play Audio");
+                            stopPlaying();
+                        }
+                    }
+                });
+                if (player == null) {
+                    holder.play_audio.setText("Play Audio");
                 }
-            });
-        } else{
-            holder.show_message.setVisibility(View.VISIBLE);
-            holder.show_message.setText(chat.getMessage());
-            holder.image_message.setVisibility(View.GONE);
-            holder.play_btn.setVisibility(View.GONE);
-            holder.play_audio.setVisibility(View.GONE);
+                break;
+            case "video":
+                holder.show_message.setVisibility(View.GONE);
+                holder.play_audio.setVisibility(View.GONE);
+                holder.play_btn.setVisibility(View.VISIBLE);
+                holder.image_message.setVisibility(View.VISIBLE);
+                String videoName = chat.getMessage();
+                if (videoName.contains("VID")) {
+                    videoName = videoName.substring(videoName.indexOf("VID"), videoName.indexOf(".mp4"));
+                    if (videoDirectory.exists()) {
+                        Log.d("Files", "Size: " + videoFiles.length);
+                        for (File file : videoFiles) {
+                            Log.d("Files", "FileName:" + file);
+                            String fileName = file.getName().split("\\.", -1)[0];
+                            if (fileName.equals(videoName)) {
+                                long interval = 100 * 1000;
+                                RequestOptions options = new RequestOptions().frame(interval)
+                                        .diskCacheStrategy(DiskCacheStrategy.ALL);
+                                Glide.with(mContext).asBitmap()
+                                        .load(file)
+                                        .apply(options)
+                                        .thumbnail(0.05f)
+                                        .into(holder.image_message);
+                            }
+                        }
+                    }
+                } else {
+                    if (isValidContextForGlide(mContext)) {
+                        long interval = 100 * 1000;
+                        RequestOptions options = new RequestOptions().frame(interval)
+                                .diskCacheStrategy(DiskCacheStrategy.ALL);
+                        Glide.with(mContext).asBitmap()
+                                .load(chat.getMessage())
+                                .apply(options)
+                                .thumbnail(0.05f)
+                                .into(holder.image_message);
+                    }
+                }
+                holder.image_message.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        Bundle extras = new Bundle();
+                        extras.putString("URL", chat.getMessage());
+                        extras.putString("type", "video");
+                        mContext.startActivity(new Intent(mContext, ImageViewActivity.class).putExtras(extras));
+                    }
+                });
+                break;
+            default:
+                holder.show_message.setVisibility(View.VISIBLE);
+                holder.show_message.setText(chat.getMessage());
+                holder.image_message.setVisibility(View.GONE);
+                holder.play_btn.setVisibility(View.GONE);
+                holder.play_audio.setVisibility(View.GONE);
+                break;
         }
 
         if(position == mChats.size() - 1){

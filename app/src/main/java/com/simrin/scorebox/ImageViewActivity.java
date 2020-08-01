@@ -239,6 +239,11 @@ public class ImageViewActivity extends AppCompatActivity {
         @Override
     public void onBackPressed() {
         super.onBackPressed();
+        if(send_image.getVisibility() == View.VISIBLE){
+            Intent intent=new Intent();
+            setResult(RESULT_CANCELED, intent);
+            finish();
+        }
         finish();
     }
 

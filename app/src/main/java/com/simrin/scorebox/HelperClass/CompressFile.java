@@ -17,7 +17,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 
 public class CompressFile {
-    public static String compressImage(String imageUri, int frameHeight, int frameWidth, Context context)  {
+    public static void compressImage(String imageUri, String destPath, int frameHeight, int frameWidth, Context context)  {
 
         String filePath = getRealPathFromURI(imageUri, context);
 
@@ -116,7 +116,7 @@ public class CompressFile {
         }
 
         FileOutputStream out = null;
-        String filename = imageUri;
+        String filename = destPath;
         try {
             out = new FileOutputStream(filename);
 
@@ -127,7 +127,7 @@ public class CompressFile {
             e.printStackTrace();
         }
 
-        return filename;
+        return;
 
     }
 

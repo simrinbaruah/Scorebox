@@ -82,8 +82,10 @@ import com.simrin.scorebox.Notifications.Sender;
 import com.simrin.scorebox.Notifications.Token;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -95,7 +97,7 @@ import java.util.List;
 
 public class MessageActivity extends AppCompatActivity {
 
-    String userid, currentPhotoPath;
+    String userid, currentPhotoPath, imageFileName, videoFileName;
 
     RelativeLayout messageLayout;
 
@@ -120,7 +122,7 @@ public class MessageActivity extends AppCompatActivity {
 
     APIService apiService;
 
-    private Uri imageUri;
+    private Uri mediaUri;
 
     boolean notify = false;
 
@@ -137,6 +139,7 @@ public class MessageActivity extends AppCompatActivity {
     private static final int CAMERA_PERMISSION_CODE = 100;
     private static final int STORAGE_PERMISSION_CODE = 101;
     private File tempVideoFile = null;
+    private File tempImageFile = null;
     private static String fileName = null;
     private static final int MIN_SWIPE_DISTANCE = 150;
     private float x1,x2;
@@ -163,6 +166,7 @@ public class MessageActivity extends AppCompatActivity {
         });
 
         apiService = Client.getClient("https://fcm.googleapis.com/").create(APIService.class);
+
 
         recyclerView=findViewById(R.id.recycler_view);
         recyclerView.setHasFixedSize(true);
@@ -293,10 +297,10 @@ public class MessageActivity extends AppCompatActivity {
                         }
                         // Continue only if the File was successfully created
                         if (photoFile != null) {
-                            imageUri = FileProvider.getUriForFile(MessageActivity.this,
+                            mediaUri = FileProvider.getUriForFile(MessageActivity.this,
                                     "com.simrin.chatapp.provider",
                                     photoFile);
-                            takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri);
+                            takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, mediaUri);
                             startActivityForResult(takePictureIntent, CAMERA_REQUEST);
                         }
                     }
@@ -537,7 +541,7 @@ public class MessageActivity extends AppCompatActivity {
                             chats.getReceiver().equals(userid) && chats.getSender().equals(myid))
                         mChats.add(chats);
                 }
-                messageAdapter = new MessageAdapter(MessageActivity.this, mChats, imageURL);
+                messageAdapter = new MessageAdapter(MessageActivity.this, userid, mChats, imageURL);
                 recyclerView.setAdapter(messageAdapter);
 
             }
@@ -567,15 +571,32 @@ public class MessageActivity extends AppCompatActivity {
         return mimeTypeMap.getExtensionFromMimeType(contentResolver.getType(uri));
     }
 
+    private File createImageFile() throws IOException {
+        // Create an image file name
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        imageFileName = "JPEG_" + timeStamp;
+        File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+        File image = File.createTempFile(
+                imageFileName,  /* prefix */
+                ".jpg",         /* suffix */
+                storageDir      /* directory */
+        );
+        // Save a file: path for use with ACTION_VIEW intents
+        currentPhotoPath = image.getAbsolutePath();
+        return image;
+    }
+
     private void uploadImage(final String sender, final String receiver){
 
-        if(imageUri != null){
+        if(mediaUri != null){
             progressBar.setVisibility(View.VISIBLE);
-            String extension = getFileExtension(imageUri);
+            String extension = getFileExtension(mediaUri);
+            imageFileName = imageFileName.split("\\.", -1)[0];
+            Log.d("ImageFileName", imageFileName);
             if(extension == null) extension = "jpg";
-            final StorageReference fileReference = storageReference.child("images").child(System.currentTimeMillis()
+            final StorageReference fileReference = storageReference.child("images").child(imageFileName
                     + "." +extension);
-            uploadTask = fileReference.putFile(imageUri);
+            uploadTask = fileReference.putFile(mediaUri);
             uploadingProcess("image", sender, receiver, fileReference);
         }else{
             Toast.makeText(MessageActivity.this, "No image selected", Toast.LENGTH_SHORT).show();
@@ -589,17 +610,19 @@ public class MessageActivity extends AppCompatActivity {
         int height = messageLayout.getHeight();
         int width = messageLayout.getWidth();
         if(requestCode==IMAGE_REQUEST && resultCode == RESULT_OK){
-            if(imageUri!=null && height != 0 && width != 0){
-                String path = getRealPathFromURI(String.valueOf(imageUri));
-                Bitmap bitmap = BitmapFactory.decodeFile(path);
-                File newImageFile = createDirectoryAndSaveFile(path, bitmap, new File(path).getName());
-                path = newImageFile.getAbsolutePath();
-                Log.d("imageURI33", String.valueOf(new File(path).length()));
-                path = CompressFile.compressImage(path, height, width, this);
-                Log.d("imageURI43", String.valueOf(new File(path).length()));
-                imageUri = Uri.fromFile(new File(path));
+            if(mediaUri!=null){
+                final File permImageFile = new File(getFilesDir() + File.separator + userid +
+                        File.separator + "images" + File.separator + imageFileName + ".jpg");
+                try {
+                    copyFile(tempImageFile, permImageFile);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
                 sendPreview();
             }
+        }
+        if(requestCode==IMAGE_REQUEST && resultCode == RESULT_CANCELED){
+            tempImageFile.delete();
         }
         if(requestCode == VIDEO_REQUEST && resultCode==RESULT_OK){
             try {
@@ -608,32 +631,54 @@ public class MessageActivity extends AppCompatActivity {
                 e.printStackTrace();
             }
             if(tempVideoFile!=null){
+                Log.d("videoFileName", videoFileName);
                 compressVideo(tempVideoFile.getPath());
             }
 
         }
         if(requestCode == CAMERA_REQUEST && resultCode == RESULT_OK) {
-            if (imageUri != null && height != 0 && width != 0) {
-                currentPhotoPath = CompressFile.compressImage(currentPhotoPath, height, width, this);
-                imageUri = Uri.fromFile(new File(currentPhotoPath));
+            if (mediaUri != null && height != 0 && width != 0) {
+                CompressFile.compressImage(currentPhotoPath, currentPhotoPath, height, width, this);
+                final File permImageFile = new File(getFilesDir() + File.separator + userid + "images" +
+                        File.separator + imageFileName);
+                try {
+                    copyFile(new File(currentPhotoPath), permImageFile);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                mediaUri = Uri.fromFile(new File(currentPhotoPath));
                 sendPreview();
             }
         }
         if(requestCode == MEDIA_REQUEST && resultCode == RESULT_OK &&
                 data!= null && data.getData()!=null){
-            imageUri = data.getData();
-
-            Bundle extras = new Bundle();
-            extras.putString("URLsender", String.valueOf(imageUri));
-
+            mediaUri = data.getData();
             ContentResolver cr = getContentResolver();
-            String mime = cr.getType(imageUri);
+            String mime = cr.getType(mediaUri);
             if(mime.toLowerCase().contains("video")) {
+                Bundle extras = new Bundle();
+                extras.putString("URLsender", String.valueOf(mediaUri));
                 extras.putString("type", "video");
+
                 startActivityForResult(new Intent(this, ImageViewActivity.class)
                     .putExtras(extras), VIDEO_REQUEST);
+
             }else if(mime.toLowerCase().contains("image")){
+                Bundle extras = new Bundle();
+                try {
+                    tempImageFile = createImageFile();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                if(tempImageFile!=null && height != 0 && width != 0){
+                    String path = getRealPathFromURI(mediaUri.toString());
+                    String destPath = tempImageFile.getAbsolutePath();
+                    CompressFile.compressImage(path, destPath, height, width, this);
+                    mediaUri = Uri.fromFile(new File(destPath));
+                }
+                extras.putString("URLsender", String.valueOf(mediaUri));
                 extras.putString("type", "image");
+
                             startActivityForResult(new Intent(this, ImageViewActivity.class)
                     .putExtras(extras), IMAGE_REQUEST);
             }
@@ -642,7 +687,7 @@ public class MessageActivity extends AppCompatActivity {
 
     private void compressVideo(String path) {
         final ProgressDialog pd = new ProgressDialog(this);
-        VideoCompress.compressVideoLow(getRealPathFromURI(imageUri.toString()), path, new VideoCompress.CompressListener() {
+        VideoCompress.compressVideoLow(getRealPathFromURI(mediaUri.toString()), path, new VideoCompress.CompressListener() {
             @Override
             public void onStart() {
 
@@ -651,7 +696,11 @@ public class MessageActivity extends AppCompatActivity {
             @Override
             public void onSuccess() {
                 pd.dismiss();
-                uploadVideo();
+                try {
+                    uploadVideo();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
 
             @Override
@@ -712,9 +761,12 @@ public class MessageActivity extends AppCompatActivity {
         uploadingProcess("audio", fuser.getUid(), userid, filepath);
     }
 
-    private void uploadVideo() {
+    private void uploadVideo() throws IOException {
         progressBar.setVisibility(View.VISIBLE);
-        StorageReference filepath = storageReference.child("video").child(System.currentTimeMillis()+".mp4");
+        StorageReference filepath = storageReference.child("video").child(videoFileName + ".mp4");
+        final File permVideoFile = new File(getFilesDir() + File.separator + userid
+                + File.separator + "video" + File.separator + videoFileName + ".mp4");
+        copyFile(tempVideoFile, permVideoFile);
         Uri uri = Uri.fromFile(tempVideoFile);
         uploadTask = filepath.putFile(uri);
         uploadingProcess("video", fuser.getUid(), userid, filepath);
@@ -774,57 +826,6 @@ public class MessageActivity extends AppCompatActivity {
         });
     }
 
-    private File createDirectoryAndSaveFile(String filePath, Bitmap imageToSave, String fileName) {
-        BitmapFactory.Options options = new BitmapFactory.Options();
-        options.inJustDecodeBounds = true;
-        BitmapFactory.decodeFile(filePath, options);
-        int actualHeight = options.outHeight;
-        int actualWidth = options.outWidth;
-
-        ExifInterface exif;
-        try {
-            exif = new ExifInterface(filePath);
-
-            int orientation = exif.getAttributeInt(
-                    ExifInterface.TAG_ORIENTATION, 0);
-            Log.d("EXIF", "Exif: " + orientation);
-            Matrix matrix = new Matrix();
-            if (orientation == 6) {
-                matrix.postRotate(90);
-                Log.d("EXIF", "Exif: " + orientation);
-            } else if (orientation == 3) {
-                matrix.postRotate(180);
-                Log.d("EXIF", "Exif: " + orientation);
-            } else if (orientation == 8) {
-                matrix.postRotate(270);
-                Log.d("EXIF", "Exif: " + orientation);
-            }
-            imageToSave = Bitmap.createBitmap(imageToSave, 0, 0, actualWidth, actualHeight, matrix, true);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        File direct = new File(getFilesDir() + "/DirName");
-
-        if (!direct.exists()) {
-            File wallpaperDirectory = new File(getFilesDir()+ "/DirName/");
-            wallpaperDirectory.mkdirs();
-        }
-
-        File file = new File(getFilesDir()+ "/DirName/", fileName);
-        if (file.exists()) {
-            file.delete();
-        }
-        try {
-            FileOutputStream out = new FileOutputStream(file);
-            imageToSave.compress(Bitmap.CompressFormat.JPEG, 100, out);
-            out.flush();
-            out.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return file;
-    }
 
     private String getRealPathFromURI(String contentURI) {
         Uri contentUri = Uri.parse(contentURI);
@@ -838,26 +839,10 @@ public class MessageActivity extends AppCompatActivity {
         }
     }
 
-    private File createImageFile() throws IOException {
-        // Create an image file name
-        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-        String imageFileName = "JPEG_" + timeStamp + "_";
-        File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
-        File image = File.createTempFile(
-                imageFileName,  /* prefix */
-                ".jpg",         /* suffix */
-                storageDir      /* directory */
-        );
-
-        // Save a file: path for use with ACTION_VIEW intents
-        currentPhotoPath = image.getAbsolutePath();
-        return image;
-    }
-
     private File createVideoFile() throws IOException {
         // Create an image file name
         String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-        String videoFileName = "VID_" + timeStamp + "_";
+        videoFileName = "VID_" + timeStamp;
         File storageDir = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
         File video = File.createTempFile(
                 videoFileName,  /* prefix */
@@ -867,6 +852,31 @@ public class MessageActivity extends AppCompatActivity {
 
         // Save a file: path for use with ACTION_VIEW intents
         return video;
+    }
+
+    public static void copyFile(File sourceFile, File destFile) throws IOException {
+        if (!destFile.getParentFile().exists())
+            destFile.getParentFile().mkdirs();
+
+        if (!destFile.exists()) {
+            destFile.createNewFile();
+        }
+
+        FileChannel source = null;
+        FileChannel destination = null;
+
+        try {
+            source = new FileInputStream(sourceFile).getChannel();
+            destination = new FileOutputStream(destFile).getChannel();
+            destination.transferFrom(source, 0, source.size());
+        } finally {
+            if (source != null) {
+                source.close();
+            }
+            if (destination != null) {
+                destination.close();
+            }
+        }
     }
 
     @Override
