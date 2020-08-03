@@ -13,10 +13,6 @@ import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
-import android.support.v4.media.session.MediaControllerCompat;
-import android.support.v4.media.session.MediaSessionCompat;
-import android.support.v4.media.session.PlaybackStateCompat;
-import android.util.Log;
 import android.view.View;
 import android.view.animation.AnimationUtils;
 import android.widget.Button;
@@ -30,10 +26,6 @@ import com.github.chrisbanes.photoview.PhotoView;
 import com.simrin.scorebox.HelperClass.BasicImageDownloader;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 
@@ -61,11 +53,11 @@ public class ImageViewActivity extends AppCompatActivity {
         if(intent.getExtras().getString("URL") != null){
             uri = intent.getStringExtra("URL");
             type = intent.getStringExtra("type");
+            send_image.setVisibility(View.GONE);
             if(type.equals("image")){
                 isImage= true;
                 full_video_view.setVisibility(View.GONE);
                 full_image_view.setVisibility(View.VISIBLE);
-                send_image.setVisibility(View.GONE);
 
                 final String name = getFileNameFromURL(uri);
                 final ProgressDialog pd = new ProgressDialog(this);
@@ -127,7 +119,7 @@ public class ImageViewActivity extends AppCompatActivity {
                 playVideo(uri);
             }
 
-        }else if(!intent.getExtras().getString("URLsender").isEmpty()){
+        }else if(intent.getExtras().getString("URLsender") != null){
             uri = intent.getStringExtra("URLsender");
             type = intent.getStringExtra("type");
             send_image.setVisibility(View.VISIBLE);
@@ -144,7 +136,6 @@ public class ImageViewActivity extends AppCompatActivity {
             Glide.with(this).load(uri).apply(new RequestOptions()
                     .fitCenter()
                     .skipMemoryCache(true))
-                    .thumbnail(0.1f)
                     .into(full_image_view);
         }
 

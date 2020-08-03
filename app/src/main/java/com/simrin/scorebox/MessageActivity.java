@@ -27,9 +27,13 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.ImageDecoder;
 import android.graphics.Matrix;
+import android.graphics.drawable.Drawable;
 import android.media.ExifInterface;
+import android.media.Image;
 import android.media.MediaRecorder;
+import android.media.ThumbnailUtils;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -37,6 +41,10 @@ import android.os.Environment;
 import android.os.Vibrator;
 
 import android.provider.MediaStore;
+import android.renderscript.Allocation;
+import android.renderscript.Element;
+import android.renderscript.RenderScript;
+import android.renderscript.ScriptIntrinsicBlur;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
@@ -45,12 +53,20 @@ import android.view.View;
 import android.webkit.MimeTypeMap;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.DataSource;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
+import com.bumptech.glide.load.engine.GlideException;
+import com.bumptech.glide.load.resource.bitmap.BitmapTransitionOptions;
+import com.bumptech.glide.request.RequestListener;
+import com.bumptech.glide.request.RequestOptions;
+import com.bumptech.glide.request.target.Target;
 import com.google.android.gms.tasks.Continuation;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.OnFailureListener;
@@ -81,10 +97,12 @@ import com.simrin.scorebox.Notifications.MyResponse;
 import com.simrin.scorebox.Notifications.Sender;
 import com.simrin.scorebox.Notifications.Token;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.text.DateFormat;
@@ -97,7 +115,9 @@ import java.util.List;
 
 public class MessageActivity extends AppCompatActivity {
 
-    String userid, currentPhotoPath, imageFileName, videoFileName;
+    String userid, currentPhotoPath, timeStamp;
+    String savedThumbPath = null;
+    File thumbFile;
 
     RelativeLayout messageLayout;
 
@@ -216,7 +236,7 @@ public class MessageActivity extends AppCompatActivity {
                         public void onClick(View view) {
                             notify = true;
                             String type = "text";
-                            sendMessage(fuser.getUid(), userid, msg, type);
+                            sendMessage(fuser.getUid(), userid, msg, null, type);
                             text_send.setText("");
                         }
                     });
@@ -405,7 +425,7 @@ public class MessageActivity extends AppCompatActivity {
         });
     }
 
-    private void sendMessage(String sender, final String receiver, final String message, final String type){
+    private void sendMessage(String sender, final String receiver, final String message, final String thumbnail, final String type){
         DatabaseReference reference = FirebaseDatabase.getInstance().getReference();
 
         DateFormat df = new SimpleDateFormat("dd-MMM-yyyy HH:mm");
@@ -416,6 +436,7 @@ public class MessageActivity extends AppCompatActivity {
         chats.setSender(sender);
         chats.setReceiver(receiver);
         chats.setMessage(message);
+        chats.setImg_place(thumbnail);
         chats.setTimestamp(time);
         chats.setType(type);
         chats.setIsseen(false);
@@ -474,6 +495,8 @@ public class MessageActivity extends AppCompatActivity {
                         media="Sent an audio";
                     }else if(type.equals("image")){
                         media ="Sent an image";
+                    }else if(type.equals("video")){
+                        media ="Sent a video";
                     }else{
                         media = message;
                     }
@@ -565,43 +588,11 @@ public class MessageActivity extends AppCompatActivity {
         intent.setAction(Intent.ACTION_PICK);
         startActivityForResult(intent, MEDIA_REQUEST);
     }
+
     private String getFileExtension(Uri uri){
         ContentResolver contentResolver = getContentResolver();
         MimeTypeMap mimeTypeMap = MimeTypeMap.getSingleton();
         return mimeTypeMap.getExtensionFromMimeType(contentResolver.getType(uri));
-    }
-
-    private File createImageFile() throws IOException {
-        // Create an image file name
-        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-        imageFileName = "JPEG_" + timeStamp;
-        File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
-        File image = File.createTempFile(
-                imageFileName,  /* prefix */
-                ".jpg",         /* suffix */
-                storageDir      /* directory */
-        );
-        // Save a file: path for use with ACTION_VIEW intents
-        currentPhotoPath = image.getAbsolutePath();
-        return image;
-    }
-
-    private void uploadImage(final String sender, final String receiver){
-
-        if(mediaUri != null){
-            progressBar.setVisibility(View.VISIBLE);
-            String extension = getFileExtension(mediaUri);
-            imageFileName = imageFileName.split("\\.", -1)[0];
-            Log.d("ImageFileName", imageFileName);
-            if(extension == null) extension = "jpg";
-            final StorageReference fileReference = storageReference.child("images").child(imageFileName
-                    + "." +extension);
-            uploadTask = fileReference.putFile(mediaUri);
-            uploadingProcess("image", sender, receiver, fileReference);
-        }else{
-            Toast.makeText(MessageActivity.this, "No image selected", Toast.LENGTH_SHORT).show();
-            progressBar.setVisibility(View.GONE);
-        }
     }
 
     @Override
@@ -612,12 +603,13 @@ public class MessageActivity extends AppCompatActivity {
         if(requestCode==IMAGE_REQUEST && resultCode == RESULT_OK){
             if(mediaUri!=null){
                 final File permImageFile = new File(getFilesDir() + File.separator + userid +
-                        File.separator + "images" + File.separator + imageFileName + ".jpg");
+                        File.separator + "images" + File.separator + "JPEG_" + timeStamp + ".jpg");
                 try {
                     copyFile(tempImageFile, permImageFile);
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
+                createThumbnail(mediaUri);
                 sendPreview();
             }
         }
@@ -631,22 +623,23 @@ public class MessageActivity extends AppCompatActivity {
                 e.printStackTrace();
             }
             if(tempVideoFile!=null){
-                Log.d("videoFileName", videoFileName);
                 compressVideo(tempVideoFile.getPath());
             }
 
         }
         if(requestCode == CAMERA_REQUEST && resultCode == RESULT_OK) {
             if (mediaUri != null && height != 0 && width != 0) {
-                CompressFile.compressImage(currentPhotoPath, currentPhotoPath, height, width, this);
+
+               CompressFile.compressImage(currentPhotoPath, currentPhotoPath, height, width, this);
                 final File permImageFile = new File(getFilesDir() + File.separator + userid + "images" +
-                        File.separator + imageFileName);
+                        File.separator + timeStamp);
                 try {
                     copyFile(new File(currentPhotoPath), permImageFile);
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
                 mediaUri = Uri.fromFile(new File(currentPhotoPath));
+                createThumbnail(mediaUri);
                 sendPreview();
             }
         }
@@ -664,7 +657,7 @@ public class MessageActivity extends AppCompatActivity {
                     .putExtras(extras), VIDEO_REQUEST);
 
             }else if(mime.toLowerCase().contains("image")){
-                Bundle extras = new Bundle();
+                final Bundle extras = new Bundle();
                 try {
                     tempImageFile = createImageFile();
                 } catch (IOException e) {
@@ -675,12 +668,42 @@ public class MessageActivity extends AppCompatActivity {
                     String destPath = tempImageFile.getAbsolutePath();
                     CompressFile.compressImage(path, destPath, height, width, this);
                     mediaUri = Uri.fromFile(new File(destPath));
-                }
-                extras.putString("URLsender", String.valueOf(mediaUri));
-                extras.putString("type", "image");
+                    extras.putString("URLsender", String.valueOf(mediaUri));
+                    extras.putString("type", "image");
 
-                            startActivityForResult(new Intent(this, ImageViewActivity.class)
-                    .putExtras(extras), IMAGE_REQUEST);
+                    startActivityForResult(new Intent(MessageActivity.this, ImageViewActivity.class)
+                            .putExtras(extras), IMAGE_REQUEST);
+                }
+            }
+        }
+    }
+
+    private void createThumbnail(Uri mediaUri) {
+        Bitmap bitmap;
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inMutable = true;
+        bitmap = BitmapFactory.decodeFile(getRealPathFromURI(mediaUri.toString()), options);
+        bitmap = fastblur(bitmap, 0.5f, 20);
+        writeBitmap(bitmap);
+    }
+
+    private void writeBitmap(Bitmap image) {
+        String imageFileName = "THUMB_" + timeStamp + ".jpg";
+        File storageDir = new File(getFilesDir() + File.separator + userid +
+                File.separator + "images" + File.separator + "thumbnail");
+        boolean success = true;
+        if (!storageDir.exists()) {
+            success = storageDir.mkdirs();
+        }
+        if (success) {
+            thumbFile = new File(storageDir, imageFileName);
+            savedThumbPath = thumbFile.getAbsolutePath();
+            try {
+                OutputStream fOut = new FileOutputStream(thumbFile);
+                image.compress(Bitmap.CompressFormat.JPEG, 20, fOut);
+                fOut.close();
+            } catch (Exception e) {
+                e.printStackTrace();
             }
         }
     }
@@ -690,7 +713,6 @@ public class MessageActivity extends AppCompatActivity {
         VideoCompress.compressVideoLow(getRealPathFromURI(mediaUri.toString()), path, new VideoCompress.CompressListener() {
             @Override
             public void onStart() {
-
             }
 
             @Override
@@ -762,23 +784,52 @@ public class MessageActivity extends AppCompatActivity {
     }
 
     private void uploadVideo() throws IOException {
+        Bitmap bmThumbnail = ThumbnailUtils.createVideoThumbnail(tempVideoFile.getAbsolutePath(), MediaStore.Video.Thumbnails.MINI_KIND);
+        String imageFileName = "THUMB_" + timeStamp + ".jpg";
+        File storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES) + File.separator + "Thumbnails");
+        boolean success = true;
+        if (!storageDir.exists()) {
+            success = storageDir.mkdirs();
+        }
+        File tempFile = null;
+        if (success) {
+           tempFile = new File(storageDir, imageFileName);
+            try {
+                OutputStream fOut = new FileOutputStream(tempFile);
+                bmThumbnail.compress(Bitmap.CompressFormat.JPEG, 100, fOut);
+                fOut.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        Uri thumb = Uri.fromFile(tempFile);
+        createThumbnail(thumb);
+        tempFile.delete();
         progressBar.setVisibility(View.VISIBLE);
-        StorageReference filepath = storageReference.child("video").child(videoFileName + ".mp4");
+        StorageReference filepath = storageReference.child("video").child("VID_"+timeStamp + ".mp4");
         final File permVideoFile = new File(getFilesDir() + File.separator + userid
-                + File.separator + "video" + File.separator + videoFileName + ".mp4");
+                + File.separator + "video" + File.separator + "VID_" + timeStamp + ".mp4");
         copyFile(tempVideoFile, permVideoFile);
         Uri uri = Uri.fromFile(tempVideoFile);
         uploadTask = filepath.putFile(uri);
         uploadingProcess("video", fuser.getUid(), userid, filepath);
     }
 
-    private void status(String status){
-        databaseReference = FirebaseDatabase.getInstance().getReference("Users").child(fuser.getUid());
+    private void uploadImage(final String sender, final String receiver){
 
-        HashMap<String, Object> hashMap = new HashMap<>();
-        hashMap.put("status", status);
+        if(mediaUri != null){
+            progressBar.setVisibility(View.VISIBLE);
+            String extension = getFileExtension(mediaUri);
+            if(extension == null) extension = "jpg";
+            final StorageReference fileReference = storageReference.child("images").child("JPEG_"+timeStamp
+                    + "." +extension);
 
-        databaseReference.updateChildren(hashMap);
+            uploadTask = fileReference.putFile(mediaUri);
+            uploadingProcess("image", sender, receiver, fileReference);
+        }else{
+            Toast.makeText(MessageActivity.this, "No image selected", Toast.LENGTH_SHORT).show();
+            progressBar.setVisibility(View.GONE);
+        }
     }
 
     private void uploadingProcess(final String type, final String sender, final String receiver, final StorageReference fileReference){
@@ -795,7 +846,7 @@ public class MessageActivity extends AppCompatActivity {
             public void onPaused(UploadTask.TaskSnapshot taskSnapshot) {
                 System.out.println("Upload is paused");
             }
-        });;
+        });
         uploadTask.continueWithTask(new Continuation<UploadTask.TaskSnapshot, Task<Uri>>() {
             @Override
             public Task<Uri> then(@NonNull Task<UploadTask.TaskSnapshot> task) throws Exception {
@@ -808,12 +859,49 @@ public class MessageActivity extends AppCompatActivity {
             public void onComplete(@NonNull Task<Uri> task) {
                 if(task.isSuccessful()) {
                     Uri downloadUri = task.getResult();
-                    String mUri = downloadUri.toString();
-                    sendMessage(sender, receiver, mUri, type);
+                    final String mUri = downloadUri.toString();
+
+                    if(type.equals("image") || type.equals("video")){
+                        Uri thumbUri = Uri.fromFile(thumbFile);
+                        String extension = getFileExtension(thumbUri);
+                        if(extension == null) extension = "jpg";
+                        StorageReference thumbRef = null;
+                        if(type.equals("image")){
+                            thumbRef = storageReference.child("images")
+                                    .child("thumbnails").child("THUMB_"+timeStamp
+                                            + "." +extension);
+                        }else {
+                            thumbRef = storageReference.child("video")
+                                    .child("thumbnails").child("THUMB_"+timeStamp
+                                            + "." +extension);
+                        }
+
+                        uploadTask = thumbRef.putFile(thumbUri);
+                        final StorageReference finalThumbRef = thumbRef;
+                        uploadTask.continueWithTask(new Continuation<UploadTask.TaskSnapshot, Task<Uri>>() {
+                            @Override
+                            public Task<Uri> then(@NonNull Task<UploadTask.TaskSnapshot> task) throws Exception {
+                                if (!task.isSuccessful())
+                                    throw task.getException();
+                                return finalThumbRef.getDownloadUrl();
+                            }
+                        }).addOnCompleteListener(new OnCompleteListener<Uri>() {
+                            @Override
+                            public void onComplete(@NonNull Task<Uri> task) {
+                                if(task.isSuccessful()) {
+                                    Uri downloadUri = task.getResult();
+                                    String mThumbUri = downloadUri.toString();
+                                    sendMessage(sender, receiver, mUri, mThumbUri, type);
+                                }
+                            }
+                        });
+                    }else{
+                        sendMessage(sender, receiver, mUri, null, type);
+                    }
                     progressBar.setVisibility(View.GONE);
 
                 }else {
-                    Toast.makeText(MessageActivity.this, "Failed to attach photo/audio!", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MessageActivity.this, "Failed to attach media!", Toast.LENGTH_SHORT).show();
                     progressBar.setVisibility(View.GONE);
                 }
             }
@@ -825,7 +913,6 @@ public class MessageActivity extends AppCompatActivity {
             }
         });
     }
-
 
     private String getRealPathFromURI(String contentURI) {
         Uri contentUri = Uri.parse(contentURI);
@@ -839,10 +926,25 @@ public class MessageActivity extends AppCompatActivity {
         }
     }
 
+    private File createImageFile() throws IOException {
+        // Create an image file name
+        timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmssSSS").format(new Date());
+        String imageFileName = "JPEG_" + timeStamp;
+        File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+        File image = File.createTempFile(
+                imageFileName,  /* prefix */
+                ".jpg",         /* suffix */
+                storageDir      /* directory */
+        );
+        // Save a file: path for use with ACTION_VIEW intents
+        currentPhotoPath = image.getAbsolutePath();
+        return image;
+    }
+
     private File createVideoFile() throws IOException {
         // Create an image file name
-        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-        videoFileName = "VID_" + timeStamp;
+        timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmssSSS").format(new Date());
+        String videoFileName = "VID_" + timeStamp;
         File storageDir = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
         File video = File.createTempFile(
                 videoFileName,  /* prefix */
@@ -877,6 +979,224 @@ public class MessageActivity extends AppCompatActivity {
                 destination.close();
             }
         }
+    }
+
+    private void status(String status){
+        databaseReference = FirebaseDatabase.getInstance().getReference("Users").child(fuser.getUid());
+
+        HashMap<String, Object> hashMap = new HashMap<>();
+        hashMap.put("status", status);
+
+        databaseReference.updateChildren(hashMap);
+    }
+
+    // Stack Blur Algorithm by Mario Klingemann <mario@quasimondo.com>
+    public Bitmap fastblur(Bitmap sentBitmap, float scale, int radius) {
+
+        int width = Math.round(sentBitmap.getWidth() * scale);
+        int height = Math.round(sentBitmap.getHeight() * scale);
+        sentBitmap = Bitmap.createScaledBitmap(sentBitmap, width, height, false);
+
+        Bitmap bitmap = sentBitmap.copy(sentBitmap.getConfig(), true);
+
+        if (radius < 1) {
+            return (null);
+        }
+
+        int w = bitmap.getWidth();
+        int h = bitmap.getHeight();
+
+        int[] pix = new int[w * h];
+        Log.e("pix", w + " " + h + " " + pix.length);
+        bitmap.getPixels(pix, 0, w, 0, 0, w, h);
+
+        int wm = w - 1;
+        int hm = h - 1;
+        int wh = w * h;
+        int div = radius + radius + 1;
+
+        int r[] = new int[wh];
+        int g[] = new int[wh];
+        int b[] = new int[wh];
+        int rsum, gsum, bsum, x, y, i, p, yp, yi, yw;
+        int vmin[] = new int[Math.max(w, h)];
+
+        int divsum = (div + 1) >> 1;
+        divsum *= divsum;
+        int dv[] = new int[256 * divsum];
+        for (i = 0; i < 256 * divsum; i++) {
+            dv[i] = (i / divsum);
+        }
+
+        yw = yi = 0;
+
+        int[][] stack = new int[div][3];
+        int stackpointer;
+        int stackstart;
+        int[] sir;
+        int rbs;
+        int r1 = radius + 1;
+        int routsum, goutsum, boutsum;
+        int rinsum, ginsum, binsum;
+
+        for (y = 0; y < h; y++) {
+            rinsum = ginsum = binsum = routsum = goutsum = boutsum = rsum = gsum = bsum = 0;
+            for (i = -radius; i <= radius; i++) {
+                p = pix[yi + Math.min(wm, Math.max(i, 0))];
+                sir = stack[i + radius];
+                sir[0] = (p & 0xff0000) >> 16;
+                sir[1] = (p & 0x00ff00) >> 8;
+                sir[2] = (p & 0x0000ff);
+                rbs = r1 - Math.abs(i);
+                rsum += sir[0] * rbs;
+                gsum += sir[1] * rbs;
+                bsum += sir[2] * rbs;
+                if (i > 0) {
+                    rinsum += sir[0];
+                    ginsum += sir[1];
+                    binsum += sir[2];
+                } else {
+                    routsum += sir[0];
+                    goutsum += sir[1];
+                    boutsum += sir[2];
+                }
+            }
+            stackpointer = radius;
+
+            for (x = 0; x < w; x++) {
+
+                r[yi] = dv[rsum];
+                g[yi] = dv[gsum];
+                b[yi] = dv[bsum];
+
+                rsum -= routsum;
+                gsum -= goutsum;
+                bsum -= boutsum;
+
+                stackstart = stackpointer - radius + div;
+                sir = stack[stackstart % div];
+
+                routsum -= sir[0];
+                goutsum -= sir[1];
+                boutsum -= sir[2];
+
+                if (y == 0) {
+                    vmin[x] = Math.min(x + radius + 1, wm);
+                }
+                p = pix[yw + vmin[x]];
+
+                sir[0] = (p & 0xff0000) >> 16;
+                sir[1] = (p & 0x00ff00) >> 8;
+                sir[2] = (p & 0x0000ff);
+
+                rinsum += sir[0];
+                ginsum += sir[1];
+                binsum += sir[2];
+
+                rsum += rinsum;
+                gsum += ginsum;
+                bsum += binsum;
+
+                stackpointer = (stackpointer + 1) % div;
+                sir = stack[(stackpointer) % div];
+
+                routsum += sir[0];
+                goutsum += sir[1];
+                boutsum += sir[2];
+
+                rinsum -= sir[0];
+                ginsum -= sir[1];
+                binsum -= sir[2];
+
+                yi++;
+            }
+            yw += w;
+        }
+        for (x = 0; x < w; x++) {
+            rinsum = ginsum = binsum = routsum = goutsum = boutsum = rsum = gsum = bsum = 0;
+            yp = -radius * w;
+            for (i = -radius; i <= radius; i++) {
+                yi = Math.max(0, yp) + x;
+
+                sir = stack[i + radius];
+
+                sir[0] = r[yi];
+                sir[1] = g[yi];
+                sir[2] = b[yi];
+
+                rbs = r1 - Math.abs(i);
+
+                rsum += r[yi] * rbs;
+                gsum += g[yi] * rbs;
+                bsum += b[yi] * rbs;
+
+                if (i > 0) {
+                    rinsum += sir[0];
+                    ginsum += sir[1];
+                    binsum += sir[2];
+                } else {
+                    routsum += sir[0];
+                    goutsum += sir[1];
+                    boutsum += sir[2];
+                }
+
+                if (i < hm) {
+                    yp += w;
+                }
+            }
+            yi = x;
+            stackpointer = radius;
+            for (y = 0; y < h; y++) {
+                // Preserve alpha channel: ( 0xff000000 & pix[yi] )
+                pix[yi] = ( 0xff000000 & pix[yi] ) | ( dv[rsum] << 16 ) | ( dv[gsum] << 8 ) | dv[bsum];
+
+                rsum -= routsum;
+                gsum -= goutsum;
+                bsum -= boutsum;
+
+                stackstart = stackpointer - radius + div;
+                sir = stack[stackstart % div];
+
+                routsum -= sir[0];
+                goutsum -= sir[1];
+                boutsum -= sir[2];
+
+                if (x == 0) {
+                    vmin[y] = Math.min(y + r1, hm) * w;
+                }
+                p = x + vmin[y];
+
+                sir[0] = r[p];
+                sir[1] = g[p];
+                sir[2] = b[p];
+
+                rinsum += sir[0];
+                ginsum += sir[1];
+                binsum += sir[2];
+
+                rsum += rinsum;
+                gsum += ginsum;
+                bsum += binsum;
+
+                stackpointer = (stackpointer + 1) % div;
+                sir = stack[stackpointer];
+
+                routsum += sir[0];
+                goutsum += sir[1];
+                boutsum += sir[2];
+
+                rinsum -= sir[0];
+                ginsum -= sir[1];
+                binsum -= sir[2];
+
+                yi += w;
+            }
+        }
+
+        Log.e("pix", w + " " + h + " " + pix.length);
+        bitmap.setPixels(pix, 0, w, 0, 0, w, h);
+
+        return (bitmap);
     }
 
     @Override

@@ -43,6 +43,7 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
     private String imageURL;
     private MediaPlayer player;
     private File imageDirectory, videoDirectory;
+    private String currentVideoDirectory = null;
     private File[] imageFiles, videoFiles;
 
     FirebaseUser fuser;
@@ -160,9 +161,9 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
                 if (videoName.contains("VID")) {
                     videoName = videoName.substring(videoName.indexOf("VID"), videoName.indexOf(".mp4"));
                     if (videoDirectory.exists()) {
-                        Log.d("Files", "Size: " + videoFiles.length);
+                        Log.d("Files2", "Size: " + videoFiles.length);
                         for (File file : videoFiles) {
-                            Log.d("Files", "FileName:" + file);
+                            Log.d("Files2", "FileName:" + file);
                             String fileName = file.getName().split("\\.", -1)[0];
                             if (fileName.equals(videoName)) {
                                 long interval = 100 * 1000;
@@ -173,6 +174,8 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
                                         .apply(options)
                                         .thumbnail(0.05f)
                                         .into(holder.image_message);
+
+                                currentVideoDirectory = file.getAbsolutePath();
                             }
                         }
                     }
@@ -188,15 +191,18 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
                                 .into(holder.image_message);
                     }
                 }
-                holder.image_message.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View view) {
-                        Bundle extras = new Bundle();
-                        extras.putString("URL", chat.getMessage());
-                        extras.putString("type", "video");
-                        mContext.startActivity(new Intent(mContext, ImageViewActivity.class).putExtras(extras));
-                    }
-                });
+                if(currentVideoDirectory!=null){
+                    holder.image_message.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View view) {
+                            Bundle extras = new Bundle();
+                            extras.putString("URL", currentVideoDirectory);
+                            extras.putString("type", "video");
+                            mContext.startActivity(new Intent(mContext, ImageViewActivity.class).putExtras(extras));
+                        }
+                    });
+                }
+
                 break;
             default:
                 holder.show_message.setVisibility(View.VISIBLE);

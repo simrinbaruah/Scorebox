@@ -5,18 +5,16 @@ public class Chat {
     private String receiver;
     private String message;
     private String timestamp;
-
     private String type;
-
-
     private String id;
+    private String img_place;
     boolean isseen;
 
     public Chat(){
 
     }
 
-    public Chat(String sender, String receiver, String message, String timestamp, Boolean isseen, String id, String type) {
+    public Chat(String sender, String receiver, String message, String timestamp, Boolean isseen, String img_place, String id, String type) {
         this.sender = sender;
         this.receiver = receiver;
         this.message = message;
@@ -24,6 +22,7 @@ public class Chat {
         this.isseen = isseen;
         this.id = id;
         this.type = type;
+        this.img_place = img_place;
     }
 
     public String getSender() {
@@ -80,5 +79,13 @@ public class Chat {
 
     public void setType(String type) {
         this.type = type;
+    }
+
+    public String getImg_place() {
+        return img_place;
+    }
+
+    public void setImg_place(String img_place) {
+        this.img_place = img_place;
     }
 }

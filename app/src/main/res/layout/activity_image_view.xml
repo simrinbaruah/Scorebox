@@ -18,8 +18,8 @@
         android:backgroundTint="@color/colorPrimary"/>
 
     <VideoView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent"
         android:layout_centerInParent="true"
         android:id="@+id/full_video_view"/>
 
