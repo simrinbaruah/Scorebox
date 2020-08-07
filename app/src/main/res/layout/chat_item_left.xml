@@ -37,12 +37,21 @@
                 android:layout_height="wrap_content"
                 android:layout_below="@id/show_message"
                 android:id="@+id/image_message_layout">
-                    <ImageView
-                        android:layout_width="160dp"
-                        android:layout_height="160dp"
-                        android:id="@+id/image_message"
-                        android:src="@mipmap/ic_launcher"
-                        android:scaleType="centerCrop"/>
+                <ImageView
+                    android:layout_width="160dp"
+                    android:layout_height="160dp"
+                    android:id="@+id/image_message"
+                    android:src="@mipmap/ic_launcher"
+                    android:scaleType="centerCrop"/>
+
+                <ImageView
+                    android:id="@+id/download_btn"
+                    android:layout_width="80dp"
+                    android:layout_height="80dp"
+                    android:layout_marginTop="40dp"
+                    android:layout_marginStart="40dp"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/ic_download" />
 
                 <ImageView
                     android:id="@+id/play_btn"
@@ -51,7 +60,8 @@
                     android:layout_marginTop="40dp"
                     android:layout_marginStart="40dp"
                     android:scaleType="centerCrop"
-                    android:src="@drawable/ic_play" />
+                    android:src="@drawable/ic_play"
+                    android:visibility="gone"/>
 
             </FrameLayout>
 

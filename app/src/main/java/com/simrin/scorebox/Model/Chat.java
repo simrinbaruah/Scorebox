@@ -8,13 +8,15 @@ public class Chat {
     private String type;
     private String id;
     private String img_place;
-    boolean isseen;
+    private boolean isseen;
+    private boolean imageExists;
 
     public Chat(){
 
     }
 
-    public Chat(String sender, String receiver, String message, String timestamp, Boolean isseen, String img_place, String id, String type) {
+    public Chat(String sender, String receiver, String message, String timestamp, boolean isseen,
+                String img_place, String id, String type, boolean imageExists) {
         this.sender = sender;
         this.receiver = receiver;
         this.message = message;
@@ -23,6 +25,7 @@ public class Chat {
         this.id = id;
         this.type = type;
         this.img_place = img_place;
+        this.imageExists = imageExists;
     }
 
     public String getSender() {
@@ -87,5 +90,13 @@ public class Chat {
 
     public void setImg_place(String img_place) {
         this.img_place = img_place;
+    }
+
+    public boolean isImageExists() {
+        return imageExists;
+    }
+
+    public void setImageExists(Boolean imageExists) {
+        this.imageExists = imageExists;
     }
 }

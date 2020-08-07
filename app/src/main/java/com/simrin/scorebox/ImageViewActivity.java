@@ -59,62 +59,62 @@ public class ImageViewActivity extends AppCompatActivity {
                 full_video_view.setVisibility(View.GONE);
                 full_image_view.setVisibility(View.VISIBLE);
 
-                final String name = getFileNameFromURL(uri);
-                final ProgressDialog pd = new ProgressDialog(this);
-                final String finalImage_URL = uri;
-                full_image_view.setOnLongClickListener(new View.OnLongClickListener() {
-                    @Override
-                    public boolean onLongClick(View view) {
-                        if(ContextCompat.checkSelfPermission(ImageViewActivity.this,
-                                Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED){
-                            checkPermission(
-                                    Manifest.permission.WRITE_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE);
-                        }
-                        final BasicImageDownloader downloader = new BasicImageDownloader(new BasicImageDownloader.OnImageLoaderListener() {
-                            @Override
-                            public void onError(BasicImageDownloader.ImageError error) {
-                                Toast.makeText(ImageViewActivity.this, "Error code " + error.getErrorCode() + ": " +
-                                        error.getMessage(), Toast.LENGTH_LONG).show();
-                                error.printStackTrace();
-                                pd.dismiss();
-                            }
-
-                            @Override
-                            public void onProgressChange(int percent) {
-                                pd.setMessage("Downloading:"+percent+"%");
-                                pd.show();
-                            }
-
-                            @Override
-                            public void onComplete(Bitmap result) {
-
-                                final Bitmap.CompressFormat mFormat = Bitmap.CompressFormat.JPEG;
-                                final File imageFile = new File(Environment.getExternalStorageDirectory().getAbsolutePath() +
-                                        File.separator + "Scorebox" + File.separator + name + "." + mFormat.name().toLowerCase());
-                                BasicImageDownloader.writeToDisk(imageFile, result, new BasicImageDownloader.OnBitmapSaveListener() {
-                                    @Override
-                                    public void onBitmapSaved() {
-                                        galleryAddPic(imageFile.getAbsolutePath());
-                                        Toast.makeText(ImageViewActivity.this, "Image Saved", Toast.LENGTH_SHORT).show();
-                                    }
-
-                                    @Override
-                                    public void onBitmapSaveError(BasicImageDownloader.ImageError error) {
-                                        Toast.makeText(ImageViewActivity.this, "Error code " + error.getErrorCode() + ": " +
-                                                error.getMessage(), Toast.LENGTH_LONG).show();
-                                        error.printStackTrace();
-
-                                    }
-                                }, mFormat, true);
-
-                                pd.dismiss();
-                                full_image_view.startAnimation(AnimationUtils.loadAnimation(ImageViewActivity.this, android.R.anim.fade_in));
-                            }
-                        });
-                        downloader.download(finalImage_URL, true);
-                        return true;
-                    }
-                });
+//                final String name = getFileNameFromURL(uri);
+//                final ProgressDialog pd = new ProgressDialog(this);
+//                final String finalImage_URL = uri;
+//                full_image_view.setOnLongClickListener(new View.OnLongClickListener() {
+//                    @Override
+//                    public boolean onLongClick(View view) {
+//                        if(ContextCompat.checkSelfPermission(ImageViewActivity.this,
+//                                Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED){
+//                            checkPermission(
+//                                    Manifest.permission.WRITE_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE);
+//                        }
+//                        final BasicImageDownloader downloader = new BasicImageDownloader(new BasicImageDownloader.OnImageLoaderListener() {
+//                            @Override
+//                            public void onError(BasicImageDownloader.ImageError error) {
+//                                Toast.makeText(ImageViewActivity.this, "Error code " + error.getErrorCode() + ": " +
+//                                        error.getMessage(), Toast.LENGTH_LONG).show();
+//                                error.printStackTrace();
+//                                pd.dismiss();
+//                            }
+//
+//                            @Override
+//                            public void onProgressChange(int percent) {
+//                                pd.setMessage("Downloading:"+percent+"%");
+//                                pd.show();
+//                            }
+//
+//                            @Override
+//                            public void onComplete(Bitmap result) {
+//
+//                                final Bitmap.CompressFormat mFormat = Bitmap.CompressFormat.JPEG;
+//                                final File imageFile = new File(Environment.getExternalStorageDirectory().getAbsolutePath() +
+//                                        File.separator + "Scorebox" + File.separator + name + "." + mFormat.name().toLowerCase());
+//                                BasicImageDownloader.writeToDisk(imageFile, result, new BasicImageDownloader.OnBitmapSaveListener() {
+//                                    @Override
+//                                    public void onBitmapSaved() {
+//                                        galleryAddPic(imageFile.getAbsolutePath());
+//                                        Toast.makeText(ImageViewActivity.this, "Image Saved", Toast.LENGTH_SHORT).show();
+//                                    }
+//
+//                                    @Override
+//                                    public void onBitmapSaveError(BasicImageDownloader.ImageError error) {
+//                                        Toast.makeText(ImageViewActivity.this, "Error code " + error.getErrorCode() + ": " +
+//                                                error.getMessage(), Toast.LENGTH_LONG).show();
+//                                        error.printStackTrace();
+//
+//                                    }
+//                                }, mFormat, true);
+//
+//                                pd.dismiss();
+//                                full_image_view.startAnimation(AnimationUtils.loadAnimation(ImageViewActivity.this, android.R.anim.fade_in));
+//                            }
+//                        });
+//                        downloader.download(finalImage_URL, true);
+//                        return true;
+//                    }
+//                });
             }else if(type.equals("video")){
                 playVideo(uri);
             }

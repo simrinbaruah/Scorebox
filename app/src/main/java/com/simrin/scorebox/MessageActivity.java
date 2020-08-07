@@ -88,6 +88,7 @@ import com.google.firebase.storage.UploadTask;
 import com.simrin.scorebox.Adapter.MessageAdapter;
 import com.simrin.scorebox.Fragments.APIService;
 import com.simrin.scorebox.HelperClass.CompressFile;
+import com.simrin.scorebox.HelperClass.FileUtils;
 import com.simrin.scorebox.HelperClass.VideoCompressor.VideoCompress;
 import com.simrin.scorebox.Model.Chat;
 import com.simrin.scorebox.Model.User;
@@ -138,7 +139,7 @@ public class MessageActivity extends AppCompatActivity {
 
     Intent intent;
 
-    ValueEventListener seenListener, receiverseenListener;
+    ValueEventListener seenListener;
 
     APIService apiService;
 
@@ -345,7 +346,7 @@ public class MessageActivity extends AppCompatActivity {
                  }else{
                      status.setText("offline");
                  }
-                 readMessages(fuser.getUid(), userid, user.getImageURL());
+                 readMessages(fuser.getUid(), userid);
              }
 
              @Override
@@ -369,8 +370,7 @@ public class MessageActivity extends AppCompatActivity {
 
     private void seenMessage(final String userid){
 
-        final ArrayList<String> id = new ArrayList<>();
-        databaseReference = FirebaseDatabase.getInstance().getReference("Chats").child(fuser.getUid()).child(userid);
+        databaseReference = FirebaseDatabase.getInstance().getReference("Chats");
         databaseReference.keepSynced(true);
         seenListener = databaseReference.addValueEventListener(new ValueEventListener() {
             @Override
@@ -381,40 +381,8 @@ public class MessageActivity extends AppCompatActivity {
                             && chat.getSender().equals(userid)){
                         HashMap<String, Object> hashMap = new HashMap<>();
                         hashMap.put("isseen", true);
-                        id.add(chat.getId());
                         snapshot.getRef().updateChildren(hashMap);
-                        FirebaseDatabase.getInstance().getReference("Chats").child(userid).child(fuser.getUid())
-                                .child(chat.getId()).updateChildren(hashMap);
-
                     }
-                }
-            }
-
-            @Override
-            public void onCancelled(@NonNull DatabaseError databaseError) {
-
-            }
-        });
-
-
-        databaseReference = FirebaseDatabase.getInstance().getReference("Chats").child(userid).child(fuser.getUid());
-        databaseReference.keepSynced(true);
-        receiverseenListener = databaseReference.addValueEventListener(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                for(DataSnapshot snapshot: dataSnapshot.getChildren()){
-                    Chat chat=snapshot.getValue(Chat.class);
-                    for(String i : id){
-                        //id error
-                        if(chat.getId().equals(i)){
-                            HashMap<String, Object> hashMap = new HashMap<>();
-                            hashMap.put("isseen", true);
-                            snapshot.getRef().updateChildren(hashMap);
-                            FirebaseDatabase.getInstance().getReference("Chats").child(fuser.getUid())
-                                    .child(userid).child(chat.getId()).updateChildren(hashMap);
-                        }
-                    }
-
                 }
             }
 
@@ -441,12 +409,7 @@ public class MessageActivity extends AppCompatActivity {
         chats.setType(type);
         chats.setIsseen(false);
 
-
-        String key = reference.child("Chats").child(fuser.getUid()).child(userid).push().getKey();
-        Log.d("key", key);
-        chats.setId(key);
-        reference.child("Chats").child(fuser.getUid()).child(userid).child(key).setValue(chats);
-        reference.child("Chats").child(userid).child(fuser.getUid()).child(key).setValue(chats);
+        reference.child("Chats").push().setValue(chats);
 
         final DatabaseReference chatRef = FirebaseDatabase.getInstance().getReference("Chatlist")
                 .child(fuser.getUid())
@@ -491,14 +454,19 @@ public class MessageActivity extends AppCompatActivity {
                 User user = dataSnapshot.getValue(User.class);
                 if(notify) {
                     String media;
-                    if(type.equals("audio")){
-                        media="Sent an audio";
-                    }else if(type.equals("image")){
-                        media ="Sent an image";
-                    }else if(type.equals("video")){
-                        media ="Sent a video";
-                    }else{
-                        media = message;
+                    switch (type) {
+                        case "audio":
+                            media = "Sent an audio";
+                            break;
+                        case "image":
+                            media = "Sent an image";
+                            break;
+                        case "video":
+                            media = "Sent a video";
+                            break;
+                        default:
+                            media = message;
+                            break;
                     }
                     sendNotification(receiver, user.getName(), media);
                 }
@@ -548,10 +516,10 @@ public class MessageActivity extends AppCompatActivity {
         });
     }
 
-    private void readMessages(final String myid, final String userid, final String imageURL){
+    private void readMessages(final String myid, final String userid){
         mChats = new ArrayList<>();
 
-        databaseReference = FirebaseDatabase.getInstance().getReference("Chats").child(myid).child(userid);
+        databaseReference = FirebaseDatabase.getInstance().getReference("Chats");
         databaseReference.keepSynced(true);
         databaseReference.addValueEventListener(new ValueEventListener() {
             @Override
@@ -564,7 +532,7 @@ public class MessageActivity extends AppCompatActivity {
                             chats.getReceiver().equals(userid) && chats.getSender().equals(myid))
                         mChats.add(chats);
                 }
-                messageAdapter = new MessageAdapter(MessageActivity.this, userid, mChats, imageURL);
+                messageAdapter = new MessageAdapter(MessageActivity.this, userid, mChats);
                 recyclerView.setAdapter(messageAdapter);
 
             }
@@ -584,9 +552,12 @@ public class MessageActivity extends AppCompatActivity {
 
     private void openImage() {
         Intent intent = new Intent();
-        intent.setType("image/* video/*");
         intent.setAction(Intent.ACTION_PICK);
-        startActivityForResult(intent, MEDIA_REQUEST);
+        intent.setType("image/* | video/*");
+//        String[] mimeTypes = {"image/*", "video/*"};
+//        intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
+//        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        startActivityForResult(Intent.createChooser(intent, "Select Media"), MEDIA_REQUEST);
     }
 
     private String getFileExtension(Uri uri){
@@ -598,6 +569,7 @@ public class MessageActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        FileUtils fileUtils = new FileUtils(this);
         int height = messageLayout.getHeight();
         int width = messageLayout.getWidth();
         if(requestCode==IMAGE_REQUEST && resultCode == RESULT_OK){
@@ -650,6 +622,7 @@ public class MessageActivity extends AppCompatActivity {
             String mime = cr.getType(mediaUri);
             if(mime.toLowerCase().contains("video")) {
                 Bundle extras = new Bundle();
+
                 extras.putString("URLsender", String.valueOf(mediaUri));
                 extras.putString("type", "video");
 
@@ -664,6 +637,7 @@ public class MessageActivity extends AppCompatActivity {
                     e.printStackTrace();
                 }
                 if(tempImageFile!=null && height != 0 && width != 0){
+//                    String path = fileUtils.getPath(mediaUri);
                     String path = getRealPathFromURI(mediaUri.toString());
                     String destPath = tempImageFile.getAbsolutePath();
                     CompressFile.compressImage(path, destPath, height, width, this);
@@ -786,7 +760,7 @@ public class MessageActivity extends AppCompatActivity {
     private void uploadVideo() throws IOException {
         Bitmap bmThumbnail = ThumbnailUtils.createVideoThumbnail(tempVideoFile.getAbsolutePath(), MediaStore.Video.Thumbnails.MINI_KIND);
         String imageFileName = "THUMB_" + timeStamp + ".jpg";
-        File storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES) + File.separator + "Thumbnails");
+        File storageDir = new File(getFilesDir() + File.separator + "Thumbnails");
         boolean success = true;
         if (!storageDir.exists()) {
             success = storageDir.mkdirs();
@@ -930,7 +904,7 @@ public class MessageActivity extends AppCompatActivity {
         // Create an image file name
         timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmssSSS").format(new Date());
         String imageFileName = "JPEG_" + timeStamp;
-        File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+        File storageDir = getFilesDir();
         File image = File.createTempFile(
                 imageFileName,  /* prefix */
                 ".jpg",         /* suffix */
@@ -945,7 +919,7 @@ public class MessageActivity extends AppCompatActivity {
         // Create an image file name
         timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmssSSS").format(new Date());
         String videoFileName = "VID_" + timeStamp;
-        File storageDir = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+        File storageDir = getFilesDir();
         File video = File.createTempFile(
                 videoFileName,  /* prefix */
                 ".mp4",         /* suffix */
@@ -1211,7 +1185,6 @@ public class MessageActivity extends AppCompatActivity {
     protected void onPause() {
         super.onPause();
         databaseReference.removeEventListener(seenListener);
-        databaseReference.removeEventListener(receiverseenListener);
         status("offline");
         currentUser("none");
     }
