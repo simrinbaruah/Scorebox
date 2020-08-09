@@ -1,4 +1,4 @@
-package com.simrin.scorebox.HelperClass;
+package com.simrin.scorebox.HelperClass.ImageHelper;
 
 import android.content.Context;
 import android.database.Cursor;
@@ -15,6 +15,8 @@ import android.util.Log;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+
+import static com.simrin.scorebox.HelperClass.UriPath.getRealPathFromURI;
 
 public class CompressFile {
     public static void compressImage(String imageUri, String destPath, int frameHeight, int frameWidth, Context context)  {
@@ -129,19 +131,6 @@ public class CompressFile {
 
         return;
 
-    }
-
-
-        private static String getRealPathFromURI(String contentURI, Context context) {
-        Uri contentUri = Uri.parse(contentURI);
-        Cursor cursor = context.getContentResolver().query(contentUri, null, null, null, null);
-        if (cursor == null) {
-            return contentUri.getPath();
-        } else {
-            cursor.moveToFirst();
-            int index = cursor.getColumnIndex(MediaStore.Images.ImageColumns.DATA);
-            return cursor.getString(index);
-        }
     }
 
     public static int calculateInSampleSize(BitmapFactory.Options options, int reqWidth, int reqHeight) {

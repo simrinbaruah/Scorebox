@@ -36,7 +36,8 @@ import com.google.firebase.storage.FileDownloadTask;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.OnProgressListener;
 import com.google.firebase.storage.StorageReference;
-import com.simrin.scorebox.HelperClass.BasicImageDownloader;
+import com.simrin.scorebox.HelperClass.ImageHelper.BasicImageDownloader;
+import com.simrin.scorebox.HelperClass.ImageHelper.CheckPermission;
 import com.simrin.scorebox.ImageViewActivity;
 import com.simrin.scorebox.Model.Chat;
 import com.simrin.scorebox.R;
@@ -481,8 +482,8 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
                              final File finalThumbFile, final ViewHolder holder, final Chat chat) {
         if(ContextCompat.checkSelfPermission(mContext,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED){
-            checkPermission(
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE);
+            CheckPermission.checkPermission(
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE, mContext);
         }
         final ProgressDialog pd = new ProgressDialog(mContext);
         final BasicImageDownloader downloader = new BasicImageDownloader(new BasicImageDownloader.OnImageLoaderListener() {
@@ -565,8 +566,8 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
                     .child("video").child(videoName + ".mp4");
             if (ContextCompat.checkSelfPermission(mContext,
                     Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                checkPermission(
-                        Manifest.permission.WRITE_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE);
+                CheckPermission.checkPermission(
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE, mContext);
             }
             if (!sbDirectory.exists()) {
                 sbDirectory.mkdirs();
@@ -671,16 +672,6 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
     private void stopPlaying() {
         player.release();
         player = null;
-    }
-
-    public void checkPermission(String permission, int requestCode) {
-        if (ContextCompat.checkSelfPermission(mContext, permission)
-                == PackageManager.PERMISSION_DENIED) {
-            // Requesting the permission
-            ActivityCompat.requestPermissions((Activity) mContext,
-                    new String[]{permission},
-                    requestCode);
-        }
     }
 
     private void galleryAddPic(String currentPhotoPath) {

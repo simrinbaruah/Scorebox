@@ -71,10 +71,8 @@ public class ChatActivity extends AppCompatActivity {
                     Chatlist chatlist = snapshot.getValue(Chatlist.class);
                     userList.add(chatlist);
                 }
-
                 chatList();
             }
-
             @Override
             public void onCancelled(@NonNull DatabaseError databaseError) {
 

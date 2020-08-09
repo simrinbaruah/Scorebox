@@ -1,4 +1,4 @@
-package com.simrin.scorebox.HelperClass;
+package com.simrin.scorebox.HelperClass.ImageHelper;
 
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
