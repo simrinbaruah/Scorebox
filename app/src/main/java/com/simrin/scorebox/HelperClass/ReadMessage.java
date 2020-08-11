@@ -18,7 +18,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ReadMessage {
-    public static void readMessages(final String myid, final String userid, final RecyclerView recyclerView, final Context context){
+    Context context;
+    public ReadMessage(Context context){
+        this.context = context;
+    }
+    public void readMessages(final String myid, final String userid, final RecyclerView recyclerView){
         final List<Chat> mChats = new ArrayList<>();
 
         DatabaseReference databaseReference = FirebaseDatabase.getInstance().getReference("Chats");

@@ -1,10 +1,9 @@
 package com.simrin.scorebox;
 
-import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
-import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -20,6 +19,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.media.MediaRecorder;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Vibrator;
 
@@ -36,41 +36,25 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.bumptech.glide.Glide;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.StorageTask;
-import com.simrin.scorebox.Adapter.MessageAdapter;
 import com.simrin.scorebox.HelperClass.AudioHelper;
 import com.simrin.scorebox.HelperClass.ImageHelper.CheckPermission;
 import com.simrin.scorebox.HelperClass.ImageHelper.CompressFile;
 import com.simrin.scorebox.HelperClass.FileUtils;
 import com.simrin.scorebox.HelperClass.ImageHelper.ImageUpload;
 import com.simrin.scorebox.HelperClass.SeenMessage;
-import com.simrin.scorebox.HelperClass.VideoCompressor.InputSurface;
+import com.simrin.scorebox.HelperClass.UserStatus;
 import com.simrin.scorebox.HelperClass.VideoHelper.VideoUpload;
-import com.simrin.scorebox.Model.Chat;
-import com.simrin.scorebox.Model.User;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
 
-import static com.simrin.scorebox.HelperClass.AudioHelper.uploadAudio;
-import static com.simrin.scorebox.HelperClass.CurrentUser.currentUser;
-import static com.simrin.scorebox.HelperClass.ReadMessage.readMessages;
 import static com.simrin.scorebox.HelperClass.SendMessage.sendMessage;
 import static com.simrin.scorebox.HelperClass.ImageHelper.Thumbnail.createThumbnail;
-import static com.simrin.scorebox.HelperClass.UserStatus.status;
-import static com.simrin.scorebox.HelperClass.UserStatus.updateStatus;
 
 public class MessageActivity extends AppCompatActivity {
 
@@ -83,7 +67,6 @@ public class MessageActivity extends AppCompatActivity {
     CircleImageView profile_image;
 
     FirebaseUser fuser;
-    DatabaseReference databaseReference;
 
     ImageButton btn_send, btn_attach, btn_voice, btn_camera;
     EditText text_send;
@@ -96,6 +79,8 @@ public class MessageActivity extends AppCompatActivity {
 
     private Uri mediaUri;
     SeenMessage sm;
+    AudioHelper audioHelper;
+    UserStatus userStatus;
 
     StorageTask uploadTask;
 
@@ -117,7 +102,7 @@ public class MessageActivity extends AppCompatActivity {
     private static int CLICK_THRESHOLD = 1000;
     private MediaRecorder recorder;
     private boolean isAudioCancel = false;
-    private String fileName;
+    private String audioFile;
 
     private static final String LOG_TAG = "AudioRecordTest";
 
@@ -194,16 +179,15 @@ public class MessageActivity extends AppCompatActivity {
                     btn_send.setVisibility(View.GONE);
                 }
             }
-
             @Override
             public void afterTextChanged(Editable editable) {
             }
         });
 
+        //For audio
         final Vibrator v = (Vibrator)getSystemService(Context.VIBRATOR_SERVICE);
-        fileName = getExternalCacheDir().getAbsolutePath();
-        fileName += "/"+System.currentTimeMillis()+".3gp";
-
+        audioHelper = new AudioHelper(userid, MessageActivity.this);
+        audioFile = audioHelper.createAudioFile();
         btn_voice.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View view, MotionEvent motionEvent) {
@@ -232,7 +216,6 @@ public class MessageActivity extends AppCompatActivity {
                         stopRecording();
                     }
                     text_send.setText("");
-
                 }
                 return false;
             }
@@ -275,9 +258,8 @@ public class MessageActivity extends AppCompatActivity {
                 }
             }
         });
-
-        updateStatus(username, status, recyclerView, profile_image, userid, MessageActivity.this);
-
+        userStatus = new UserStatus();
+        userStatus.updateStatus(username, status, recyclerView, profile_image, userid, MessageActivity.this);
          sm = new SeenMessage();
          sm.seenMessage(userid);
     }
@@ -368,7 +350,7 @@ public class MessageActivity extends AppCompatActivity {
         recorder = new MediaRecorder();
         recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
         recorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
-        recorder.setOutputFile(fileName);
+        recorder.setOutputFile(audioFile);
         recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
         try {
             recorder.prepare();
@@ -386,26 +368,34 @@ public class MessageActivity extends AppCompatActivity {
             recorder.release();
             recorder = null;
             if(isAudioCancel){
+                File tempFile = new File(audioFile);
+                tempFile.delete();
                 isAudioCancel=false;
             }else{
-                uploadAudio(progressBar, fileName, userid, MessageActivity.this);
+                audioHelper.uploadAudio(progressBar, audioFile);
             }
         }
+    }
+
+    public void currentUser(String userid){
+        SharedPreferences.Editor editor = getSharedPreferences("PREFS", MODE_PRIVATE).edit();
+        editor.putString("currentuser", userid);
+        editor.apply();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        status("online");
-        currentUser(userid, MessageActivity.this);
+        userStatus.status("online");
+        currentUser(userid);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         sm.databaseReference.removeEventListener(sm.seenListener);
-        status("offline");
-        currentUser("none", MessageActivity.this);
+        userStatus.status("offline");
+        currentUser("none");
     }
 
     @Override

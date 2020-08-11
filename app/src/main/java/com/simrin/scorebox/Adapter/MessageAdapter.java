@@ -64,7 +64,7 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
     private List<Chat> mChats;
     private String userid;
     private MediaPlayer player;
-    private File imageDirectory, videoDirectory, thumbDirectory, sbDirectory;
+    private File imageDirectory, videoDirectory, thumbDirectory, sbDirectory, audioDirectory;
     private boolean tobeDeleted = false;
 
     FirebaseUser fuser;
@@ -92,6 +92,11 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
                 File.separator + "Scorebox");
         Log.d("sbFiles", "Path: " + sbImagesFolder.getPath());
         sbDirectory = new File(sbImagesFolder.getPath());
+
+        File audioFolder = new File(mContext.getFilesDir() + File.separator + userid +
+                File.separator + "audio");
+        Log.d("AudFiles", "Path: " + audioFolder.getPath());
+        audioDirectory = new File(audioFolder.getPath());
 
     }
 
@@ -320,12 +325,31 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
                 holder.image_message.setVisibility(View.GONE);
                 holder.play_btn.setVisibility(View.GONE);
                 holder.play_audio.setVisibility(View.VISIBLE);
-                holder.play_audio.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View view) {
-                        if (holder.play_audio.getText().equals("Play Audio")) {
+                String audioName = chat.getMessage();
+                String audioFile = null;
+                if(audioName.contains("AUD")){
+                    audioName = audioName.substring(audioName.indexOf("AUD"), audioName.indexOf(".3gp"));
+                    if(audioDirectory.exists()){
+                        File internalFile = new File(mContext.getFilesDir() + File.separator + userid
+                                + File.separator + "audio" + File.separator + audioName + ".3gp");
+                        if(internalFile.exists()){
+                            holder.play_audio.setText("Play Audio");
+                            audioFile = internalFile.getAbsolutePath();
+                            chat.setImageExists(true);
+                        }else{
+                            holder.play_audio.setText("Download");
+                            chat.setImageExists(false);
+                        }
+                    }
+                    final String finalAudioFile = audioFile;
+                    final String finalAudioName = audioName;
+
+                    holder.play_audio.setOnClickListener(new View.OnClickListener() {
+                            @Override
+                            public void onClick(View view) {
+                                if (holder.play_audio.getText().equals("Play Audio")) {
                             holder.play_audio.setText("Stop Audio");
-                            startPlaying(chat.getMessage());
+                            startPlaying(finalAudioFile);
                             player.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
                                 @Override
                                 public void onCompletion(MediaPlayer mediaPlayer) {
@@ -335,11 +359,41 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
                         } else if (holder.play_audio.getText().equals("Stop Audio")) {
                             holder.play_audio.setText("Play Audio");
                             stopPlaying();
+                        } else if(holder.play_audio.getText().equals("Download")){
+                            downloadAudio(finalAudioName, holder, chat);
                         }
                     }
-                });
-                if (player == null) {
-                    holder.play_audio.setText("Play Audio");
+                        });
+                        if (player == null) {
+                            if(chat.isImageExists()){
+                                holder.play_audio.setText("Play Audio");
+                            }else{
+                                holder.play_audio.setText("Download");
+                            }
+                        }
+
+                }else{
+                    holder.play_audio.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View view) {
+                            if (holder.play_audio.getText().equals("Play Audio")) {
+                                holder.play_audio.setText("Stop Audio");
+                                startPlaying(chat.getMessage());
+                                player.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                                    @Override
+                                    public void onCompletion(MediaPlayer mediaPlayer) {
+                                        holder.play_audio.setText("Play Audio");
+                                    }
+                                });
+                            } else if (holder.play_audio.getText().equals("Stop Audio")) {
+                                holder.play_audio.setText("Play Audio");
+                                stopPlaying();
+                            }
+                        }
+                    });
+                    if (player == null) {
+                        holder.play_audio.setText("Play Audio");
+                    }
                 }
                 break;
 
@@ -439,7 +493,6 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
     @Override
     public int getItemCount() {
         return mChats.size();
-
     }
 
     public static class ViewHolder extends RecyclerView.ViewHolder{
@@ -464,10 +517,8 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
             date = itemView.findViewById(R.id.date);
             download_btn = itemView.findViewById(R.id.download_btn);
             date.setVisibility(View.GONE);
-
         }
     }
-
 
     @Override
     public int getItemViewType(int position) {
@@ -559,48 +610,114 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
         downloader.download(imageURL, displayProgress);
     }
 
-
-        public void downloadVideo(final String videoName, final File thumbFile, final ViewHolder holder, final Chat chat) {
-            final ProgressDialog pd = new ProgressDialog(mContext);
-            StorageReference videoRef = FirebaseStorage.getInstance().getReference().child("messages")
-                    .child("video").child(videoName + ".mp4");
-            if (ContextCompat.checkSelfPermission(mContext,
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                CheckPermission.checkPermission(
-                        Manifest.permission.WRITE_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE, mContext);
-            }
-            if (!sbDirectory.exists()) {
-                sbDirectory.mkdirs();
-            }
-            final File vidFile = new File(sbDirectory, videoName + ".mp4");
-
-            videoRef.getFile(vidFile).addOnSuccessListener(new OnSuccessListener<FileDownloadTask.TaskSnapshot>() {
-                @Override
-                public void onSuccess(FileDownloadTask.TaskSnapshot taskSnapshot) {
-                    // Local temp file has been created
-                    pd.dismiss();
-                    setGlideVideo(vidFile, thumbFile, holder);
-                    addVideo(videoName, vidFile);
-                    chat.setImageExists(true);
-                }
-            }).addOnFailureListener(new OnFailureListener() {
-                @Override
-                public void onFailure(@NonNull Exception exception) {
-                    Toast.makeText(mContext, exception.getLocalizedMessage(), Toast.LENGTH_SHORT).show();
-                    pd.dismiss();
-                    // Handle any errors
-                }
-            }).addOnProgressListener(new OnProgressListener<FileDownloadTask.TaskSnapshot>() {
-                @Override
-                public void onProgress(@NonNull FileDownloadTask.TaskSnapshot taskSnapshot) {
-                    double progress = (100.0 * taskSnapshot.getBytesTransferred()) / taskSnapshot.getTotalByteCount();
-                    Log.d("PROGRESS", "Upload is " + progress + "% done");
-                    int currentprogress = (int) Math.round(progress);
-                    pd.setMessage("Downloading:"+currentprogress+"%");
-                    pd.show();
-                }
-            });
+    public void downloadVideo(final String videoName, final File thumbFile, final ViewHolder holder, final Chat chat) {
+        final ProgressDialog pd = new ProgressDialog(mContext);
+        StorageReference videoRef = FirebaseStorage.getInstance().getReference().child("messages")
+                .child("video").child(videoName + ".mp4");
+        if (ContextCompat.checkSelfPermission(mContext,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            CheckPermission.checkPermission(
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE, mContext);
         }
+        if (!sbDirectory.exists()) {
+            sbDirectory.mkdirs();
+        }
+        final File vidFile = new File(sbDirectory, videoName + ".mp4");
+
+        videoRef.getFile(vidFile).addOnSuccessListener(new OnSuccessListener<FileDownloadTask.TaskSnapshot>() {
+            @Override
+            public void onSuccess(FileDownloadTask.TaskSnapshot taskSnapshot) {
+                // Local temp file has been created
+                pd.dismiss();
+                setGlideVideo(vidFile, thumbFile, holder);
+                addVideo(videoName, vidFile);
+                chat.setImageExists(true);
+            }
+        }).addOnFailureListener(new OnFailureListener() {
+            @Override
+            public void onFailure(@NonNull Exception exception) {
+                Toast.makeText(mContext, exception.getLocalizedMessage(), Toast.LENGTH_SHORT).show();
+                pd.dismiss();
+                // Handle any errors
+            }
+        }).addOnProgressListener(new OnProgressListener<FileDownloadTask.TaskSnapshot>() {
+            @Override
+            public void onProgress(@NonNull FileDownloadTask.TaskSnapshot taskSnapshot) {
+                double progress = (100.0 * taskSnapshot.getBytesTransferred()) / taskSnapshot.getTotalByteCount();
+                Log.d("PROGRESS", "Upload is " + progress + "% done");
+                int currentprogress = (int) Math.round(progress);
+                pd.setMessage("Downloading:"+currentprogress+"%");
+                pd.show();
+            }
+        });
+    }
+
+    public void downloadAudio(final String audioName, final ViewHolder holder, final Chat chat) {
+        final ProgressDialog pd = new ProgressDialog(mContext);
+        StorageReference audioRef = FirebaseStorage.getInstance().getReference().child("messages")
+                .child("audio").child(audioName + ".3gp");
+        if (ContextCompat.checkSelfPermission(mContext,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            CheckPermission.checkPermission(
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE, STORAGE_PERMISSION_CODE, mContext);
+        }
+        if (!audioDirectory.exists()) {
+            audioDirectory.mkdirs();
+        }
+        final File vidFile = new File(audioDirectory, audioName + ".3gp");
+
+        audioRef.getFile(vidFile).addOnSuccessListener(new OnSuccessListener<FileDownloadTask.TaskSnapshot>() {
+            @Override
+            public void onSuccess(FileDownloadTask.TaskSnapshot taskSnapshot) {
+                // Local temp file has been created
+                pd.dismiss();
+                holder.play_audio.setText("Play Audio");
+                chat.setImageExists(true);
+                holder.play_audio.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        if (holder.play_audio.getText().equals("Play Audio")) {
+                            holder.play_audio.setText("Stop Audio");
+                            startPlaying(vidFile.getAbsolutePath());
+                            player.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                                @Override
+                                public void onCompletion(MediaPlayer mediaPlayer) {
+                                    holder.play_audio.setText("Play Audio");
+                                }
+                            });
+                        } else if (holder.play_audio.getText().equals("Stop Audio")) {
+                            holder.play_audio.setText("Play Audio");
+                            stopPlaying();
+                        }
+                    }
+                });
+                if (player == null) {
+                    if(chat.isImageExists()){
+                        holder.play_audio.setText("Play Audio");
+                    }else{
+                        holder.play_audio.setText("Download");
+                    }
+                }
+
+            }
+        }).addOnFailureListener(new OnFailureListener() {
+            @Override
+            public void onFailure(@NonNull Exception exception) {
+                Toast.makeText(mContext, exception.getLocalizedMessage(), Toast.LENGTH_SHORT).show();
+                pd.dismiss();
+                // Handle any errors
+            }
+        }).addOnProgressListener(new OnProgressListener<FileDownloadTask.TaskSnapshot>() {
+            @Override
+            public void onProgress(@NonNull FileDownloadTask.TaskSnapshot taskSnapshot) {
+                double progress = (100.0 * taskSnapshot.getBytesTransferred()) / taskSnapshot.getTotalByteCount();
+                Log.d("PROGRESS", "Upload is " + progress + "% done");
+                int currentprogress = (int) Math.round(progress);
+                pd.setMessage("Downloading:"+currentprogress+"%");
+                pd.show();
+            }
+        });
+    }
 
     public void addVideo(String videoName, File videoFile) {
         ContentValues values = new ContentValues(3);
@@ -669,6 +786,7 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
             Log.e("AUDIO PLAYING", "prepare() failed");
         }
     }
+
     private void stopPlaying() {
         player.release();
         player = null;

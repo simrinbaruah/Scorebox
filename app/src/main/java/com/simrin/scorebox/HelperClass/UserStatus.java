@@ -23,11 +23,12 @@ import java.util.HashMap;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
-import static com.simrin.scorebox.HelperClass.ReadMessage.readMessages;
-
 public class UserStatus {
-    final static FirebaseUser fuser = FirebaseAuth.getInstance().getCurrentUser();
-    public static void updateStatus(final TextView username, final TextView status, final RecyclerView recyclerView,
+    final  FirebaseUser fuser = FirebaseAuth.getInstance().getCurrentUser();
+    public UserStatus(){
+
+    }
+    public  void updateStatus(final TextView username, final TextView status, final RecyclerView recyclerView,
                                     final CircleImageView profile_image, final String userid, final Context context){
         DatabaseReference databaseReference = FirebaseDatabase.getInstance().getReference("Users").child(userid);
         databaseReference.keepSynced(true);
@@ -46,7 +47,8 @@ public class UserStatus {
                 }else{
                     status.setText("offline");
                 }
-                readMessages(fuser.getUid(), userid, recyclerView, context);
+                ReadMessage read = new ReadMessage(context);
+                read.readMessages(fuser.getUid(), userid, recyclerView);
             }
 
             @Override
@@ -56,7 +58,7 @@ public class UserStatus {
         });
     }
 
-    public static void status(String status){
+    public void status(String status){
         DatabaseReference databaseReference = FirebaseDatabase.getInstance().getReference("Users").child(fuser.getUid());
         HashMap<String, Object> hashMap = new HashMap<>();
         hashMap.put("status", status);
